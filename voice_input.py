@@ -15,11 +15,7 @@ import numpy as np
 import sounddevice as sd
 from faster_whisper import WhisperModel
 
-# --- Config ---
-KEY_CODE = ecodes.KEY_RIGHTALT
-SAMPLE_RATE = 16000
-MODEL_SIZE = "large-v3"
-LANGUAGE = "ru"
+from config import KEYBOARD_DEVICE, KEY_CODE, MODEL_SIZE, LANGUAGE, SAMPLE_RATE
 
 
 def type_text(text):
@@ -34,7 +30,7 @@ def main():
     model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float16")
     print("Model loaded.")
 
-    kbd = evdev.InputDevice("/dev/input/event7")
+    kbd = evdev.InputDevice(KEYBOARD_DEVICE)
     print(f"Keyboard: {kbd.name} ({kbd.path})")
     print(f"Listening (no grab). Right Alt = push-to-talk.")
     print(f"Ctrl+C to exit.\n")

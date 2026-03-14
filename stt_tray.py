@@ -18,7 +18,11 @@ from gi.repository import Gtk, AyatanaAppIndicator3, GLib
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 VOICE_SCRIPT = os.path.join(SCRIPT_DIR, "voice_input.py")
-PYTHON = os.path.expanduser("~/.pyenv/versions/3.10.19/bin/python3")
+
+# Read PYTHON from config.py (no evdev dependency, safe for system Python)
+_config = {}
+exec(open(os.path.join(SCRIPT_DIR, "config.py")).read(), _config)
+PYTHON = _config.get("PYTHON", "python3")
 
 ICON_OFF = "audio-input-microphone-muted"
 ICON_ON = "audio-input-microphone"
