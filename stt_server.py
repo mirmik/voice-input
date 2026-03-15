@@ -12,10 +12,9 @@ import numpy as np
 from flask import Flask, request, jsonify
 from faster_whisper import WhisperModel
 
-from config import MODEL_SIZE, LANGUAGE, SAMPLE_RATE, STT_TOKEN
+from config import MODEL_SIZE, LANGUAGE, SAMPLE_RATE, STT_TOKEN, STT_PORT
 
 HOST = "0.0.0.0"
-PORT = 5055
 
 print(f"Loading Whisper {MODEL_SIZE}...")
 model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float16")
@@ -60,5 +59,5 @@ def health():
 
 
 if __name__ == "__main__":
-    print(f"STT server on {HOST}:{PORT}")
-    app.run(host=HOST, port=PORT, threaded=False)
+    print(f"STT server on {HOST}:{STT_PORT}")
+    app.run(host=HOST, port=STT_PORT, threaded=False)
