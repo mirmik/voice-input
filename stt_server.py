@@ -7,7 +7,12 @@ POST /stt  — multipart audio file or raw float32 PCM
 GET /health — check if server is alive
 """
 
+import atexit
 import io
+import os
+import signal
+import sys
+
 import numpy as np
 from flask import Flask, request, jsonify
 from faster_whisper import WhisperModel
@@ -15,6 +20,7 @@ from faster_whisper import WhisperModel
 from config import MODEL_SIZE, LANGUAGE, SAMPLE_RATE, STT_TOKEN, STT_PORT
 
 HOST = "0.0.0.0"
+PID_FILE = os.path.expanduser("~/.config/voice-input/stt_server.pid")
 
 print(f"Loading Whisper {MODEL_SIZE}...")
 model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float16")
@@ -58,6 +64,37 @@ def health():
     return jsonify({"status": "ok", "model": MODEL_SIZE})
 
 
+def write_pid():
+    os.makedirs(os.path.dirname(PID_FILE), exist_ok=True)
+    with open(PID_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+
+def remove_pid():
+    try:
+        os.remove(PID_FILE)
+    except FileNotFoundError:
+        pass
+
+
+def kill_old_server():
+    """Kill previously running server if PID file exists."""
+    try:
+        with open(PID_FILE) as f:
+            old_pid = int(f.read().strip())
+        os.kill(old_pid, signal.SIGTERM)
+        print(f"Killed old server (PID {old_pid}).")
+        import time
+        time.sleep(1)
+    except (FileNotFoundError, ValueError):
+        pass
+    except ProcessLookupError:
+        remove_pid()
+
+
 if __name__ == "__main__":
-    print(f"STT server on {HOST}:{STT_PORT}")
+    kill_old_server()
+    write_pid()
+    atexit.register(remove_pid)
+    print(f"STT server on {HOST}:{STT_PORT} (PID {os.getpid()})")
     app.run(host=HOST, port=STT_PORT, threaded=False)
