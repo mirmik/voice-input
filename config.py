@@ -40,3 +40,7 @@ if os.path.exists(_config_path):
     for _k, _v in _overrides.items():
         if _k in globals():
             globals()[_k] = _v
+
+# If STT_PORT was overridden but STT_SERVER wasn't, rebuild STT_SERVER
+if "STT_PORT" in _overrides and "STT_SERVER" not in _overrides:
+    STT_SERVER = f"http://localhost:{STT_PORT}"
