@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
-Voice input: hold Right Alt to record, release to transcribe and type.
-No grab — listens passively, Right Alt still triggers system actions
-but also starts recording.
+STT client: push-to-talk via evdev, sends audio to STT server, types result.
+Works on Linux with evdev. For Windows client, see stt_client_win.py.
 
-Requires: pip install faster-whisper evdev sounddevice numpy
+Requires: pip install evdev sounddevice numpy requests
 Requires: sudo apt install xdotool
 """
 
 import subprocess
+import sys
+
 import evdev
 from evdev import ecodes
 import numpy as np
+import requests
 import sounddevice as sd
-from faster_whisper import WhisperModel
 
-from config import KEYBOARD_DEVICE, KEY_CODE, MODEL_SIZE, LANGUAGE, SAMPLE_RATE
+from config import KEYBOARD_DEVICE, KEY_CODE, SAMPLE_RATE, STT_SERVER
 
 
 def type_text(text):
@@ -25,15 +26,31 @@ def type_text(text):
     )
 
 
+def transcribe(audio):
+    """Send audio to STT server and return text."""
+    resp = requests.post(
+        f"{STT_SERVER}/stt",
+        data=audio.tobytes(),
+        headers={"Content-Type": "application/octet-stream"},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json().get("text", "")
+
+
 def main():
-    print(f"Loading Whisper {MODEL_SIZE}...")
-    model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float16")
-    print("Model loaded.")
+    # Check server
+    try:
+        r = requests.get(f"{STT_SERVER}/health", timeout=5)
+        info = r.json()
+        print(f"Server OK: {STT_SERVER} (model: {info.get('model', '?')})")
+    except Exception as e:
+        print(f"Cannot reach STT server at {STT_SERVER}: {e}")
+        sys.exit(1)
 
     kbd = evdev.InputDevice(KEYBOARD_DEVICE)
     print(f"Keyboard: {kbd.name} ({kbd.path})")
-    print(f"Listening (no grab). Right Alt = push-to-talk.")
-    print(f"Ctrl+C to exit.\n")
+    print(f"Push-to-talk active. Ctrl+C to exit.\n")
 
     recording = False
     chunks = []
@@ -49,7 +66,6 @@ def main():
 
             key_event = evdev.categorize(event)
 
-            # Key down
             if key_event.keystate == evdev.KeyEvent.key_down and not recording:
                 recording = True
                 chunks.clear()
@@ -62,7 +78,6 @@ def main():
                 stream.start()
                 print("  🎙 Recording...", end="", flush=True)
 
-            # Key up (ignore repeat)
             elif key_event.keystate == evdev.KeyEvent.key_up and recording:
                 recording = False
                 stream.stop()
@@ -79,17 +94,17 @@ def main():
                     print("  (too short)")
                     continue
 
-                print(f"  Transcribing {duration:.1f}s...")
-                segments, info = model.transcribe(
-                    audio, language=LANGUAGE, beam_size=5
-                )
-                text = " ".join(s.text.strip() for s in segments).strip()
-
-                if text:
-                    print(f"  >>> {text}")
-                    type_text(text)
-                else:
-                    print("  (no speech detected)")
+                print(f"  Sending {duration:.1f}s to server...", end="", flush=True)
+                try:
+                    text = transcribe(audio)
+                    print(f" done.")
+                    if text:
+                        print(f"  >>> {text}")
+                        type_text(text)
+                    else:
+                        print("  (no speech detected)")
+                except Exception as e:
+                    print(f" error: {e}")
 
     except KeyboardInterrupt:
         print("\nExiting...")

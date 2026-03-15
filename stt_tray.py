@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
-System tray indicator for STT (voice_input.py).
-Toggle Whisper model loading/unloading from tray.
+System tray indicator for STT.
+Manages stt_server.py (Whisper model) and stt_client.py (push-to-talk).
 
 Run with: /usr/bin/python3 stt_tray.py
 (must use system Python for GTK/AppIndicator bindings)
@@ -17,9 +17,10 @@ gi.require_version('AyatanaAppIndicator3', '0.1')
 from gi.repository import Gtk, AyatanaAppIndicator3, GLib
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-VOICE_SCRIPT = os.path.join(SCRIPT_DIR, "voice_input.py")
+SERVER_SCRIPT = os.path.join(SCRIPT_DIR, "stt_server.py")
+CLIENT_SCRIPT = os.path.join(SCRIPT_DIR, "stt_client.py")
 
-# Read PYTHON from config.py (no evdev dependency, safe for system Python)
+# Read PYTHON from config.py
 _config = {}
 exec(open(os.path.join(SCRIPT_DIR, "config.py")).read(), _config)
 PYTHON = _config.get("PYTHON", "python3")
@@ -30,7 +31,8 @@ ICON_ON = "audio-input-microphone"
 
 class STTTray:
     def __init__(self):
-        self.process = None
+        self.server_proc = None
+        self.client_proc = None
 
         self.indicator = AyatanaAppIndicator3.Indicator.new(
             "stt-indicator",
@@ -55,43 +57,54 @@ class STTTray:
         self.indicator.set_menu(self.menu)
 
     def on_toggle(self, _):
-        if self.process is None:
+        if self.server_proc is None:
             self.start_stt()
         else:
             self.stop_stt()
 
     def start_stt(self):
         try:
-            self.process = subprocess.Popen(
-                [PYTHON, VOICE_SCRIPT],
+            # Start server first (loads Whisper model)
+            self.server_proc = subprocess.Popen(
+                [PYTHON, SERVER_SCRIPT],
                 preexec_fn=os.setsid,
             )
+            # Wait a moment for server to start, then launch client
+            GLib.timeout_add(3000, self._start_client)
             self.indicator.set_icon_full(ICON_ON, "STT Active")
             self.toggle_item.set_label("Stop STT")
-            # Monitor process exit
-            GLib.timeout_add(1000, self.check_process)
+            GLib.timeout_add(1000, self.check_processes)
         except Exception as e:
-            print(f"Failed to start: {e}")
+            print(f"Failed to start server: {e}")
+
+    def _start_client(self):
+        try:
+            self.client_proc = subprocess.Popen(
+                [PYTHON, CLIENT_SCRIPT],
+                preexec_fn=os.setsid,
+            )
+        except Exception as e:
+            print(f"Failed to start client: {e}")
+        return False  # don't repeat
 
     def stop_stt(self):
-        if self.process:
-            try:
-                os.killpg(os.getpgid(self.process.pid), signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            self.process.wait()
-            self.process = None
+        for proc in [self.client_proc, self.server_proc]:
+            if proc:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                proc.wait()
+        self.client_proc = None
+        self.server_proc = None
         self.indicator.set_icon_full(ICON_OFF, "STT Inactive")
         self.toggle_item.set_label("Start STT")
 
-    def check_process(self):
-        if self.process and self.process.poll() is not None:
-            # Process died on its own
-            self.process = None
-            self.indicator.set_icon_full(ICON_OFF, "STT Inactive")
-            self.toggle_item.set_label("Start STT")
-            return False  # stop checking
-        return self.process is not None  # keep checking if running
+    def check_processes(self):
+        if self.server_proc and self.server_proc.poll() is not None:
+            self.stop_stt()
+            return False
+        return self.server_proc is not None
 
     def on_quit(self, _):
         self.stop_stt()
@@ -99,7 +112,7 @@ class STTTray:
 
 
 def main():
-    signal.signal(signal.SIGINT, signal.SIG_DFL)  # allow Ctrl+C
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
     STTTray()
     Gtk.main()
 

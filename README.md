@@ -1,84 +1,95 @@
 # STT Voice Input
 
-Push-to-talk голосовой ввод для Linux (XFCE) через Whisper large-v3.
+Push-to-talk голосовой ввод через Whisper large-v3. Клиент-серверная архитектура: сервер с GPU обрабатывает речь, клиенты подключаются по сети.
 
 Зажал Right Alt → говоришь → отпустил → текст вставляется в активное окно.
 
-## Как это работает
+## Архитектура
 
 ```
-Right Alt (evdev) → Микрофон (sounddevice) → Whisper large-v3 (faster-whisper, GPU)
-    → xdotool type → текст в активное окно
+[Linux/Windows клиент]                    [Сервер (GPU)]
+Right Alt → Микрофон → HTTP POST ──────→ Whisper large-v3
+xdotool/Ctrl+V ← текст ←── JSON ←──────  распознавание
 ```
 
-Tray-индикатор позволяет включать/выключать STT без терминала, чтобы не держать модель в VRAM постоянно.
+Сервер загружает модель один раз и обслуживает любое количество клиентов. Модель в VRAM только пока сервер запущен.
 
 ## Требования
 
-- Linux (XFCE, но должно работать и в других DE с поддержкой AppIndicator)
-- NVIDIA GPU с поддержкой CUDA (для Whisper)
+### Сервер
+- NVIDIA GPU с поддержкой CUDA
 - Python 3.10+
-- Клавиатура, видимая через evdev
+- `faster-whisper`, `flask`, `numpy`
 
-## Установка
+### Linux-клиент
+- `evdev`, `sounddevice`, `numpy`, `requests`
+- `xdotool` для вставки текста
+- Пользователь в группе `input` (для evdev без sudo)
+
+### Windows-клиент
+- `pynput`, `sounddevice`, `numpy`, `requests`, `pyperclip`, `keyboard`
+
+## Установка (Linux, сервер + клиент на одной машине)
 
 ```bash
 git clone <repo-url>
-cd whisper-test
+cd voice-input
 ./install.sh
 ```
 
-Скрипт установит:
-- Системные пакеты: `python3-gi`, `gir1.2-ayatanaappindicator3-0.1`, `xdotool`
-- Python-пакеты: `faster-whisper`, `evdev`, `sounddevice`, `numpy`
-- Добавит пользователя в группу `input` (для доступа к evdev без sudo)
-- Создаст autostart-запись для XFCE
-- Скачает модель Whisper large-v3 (~3 ГБ)
-
-После установки перелогиньтесь (для группы `input`).
-
 ## Использование
 
-### Через tray
-После логина иконка микрофона появится в трее (перечёркнутый = STT выключен).
-- Клик → **Start STT** — загружает модель, начинает слушать клавишу
-- Клик → **Stop STT** — выгружает модель, освобождает VRAM
+### Через tray (Linux)
+После логина иконка микрофона в трее.
+- **Start STT** — запускает сервер (загружает модель) + клиент
+- **Stop STT** — останавливает оба, освобождает VRAM
 - **Quit** — убирает из трея
 
 ### Ручной запуск
 ```bash
-# Только STT (без трея):
-python3 voice_input.py
+# Сервер (на машине с GPU):
+python3 stt_server.py
 
-# Tray-индикатор:
+# Linux-клиент (на той же или другой машине):
+python3 stt_client.py
+
+# Windows-клиент:
+python stt_client_win.py
+
+# Tray-индикатор (XFCE):
 /usr/bin/python3 stt_tray.py
 ```
 
-### Голосовой чат с Claude
-```bash
-python3 voice_chat.py
+### Удалённый доступ
+На клиентской машине в `config.py` (Linux) или в `stt_client_win.py` (Windows) укажите IP сервера:
+```python
+STT_SERVER = "http://192.168.1.100:5055"
 ```
-Требует настроенный Claude Code. Ответы Claude выводятся в терминал и (опционально) озвучиваются через XTTS v2.
 
 ## Файлы
 
 | Файл | Назначение |
 |------|-----------|
-| `voice_input.py` | Основной STT-скрипт: evdev → запись → Whisper → xdotool |
-| `voice_chat.py` | Голосовой чат с Claude через `--resume` |
-| `stt_tray.py` | XFCE tray-индикатор для управления voice_input.py |
-| `install.sh` | Скрипт установки зависимостей и autostart |
+| `stt_server.py` | HTTP-сервер с Whisper (запускается на машине с GPU) |
+| `stt_client.py` | Linux-клиент: evdev push-to-talk → сервер → xdotool |
+| `stt_client_win.py` | Windows-клиент: pynput push-to-talk → сервер → Ctrl+V |
+| `stt_tray.py` | XFCE tray-индикатор (управляет сервером и клиентом) |
+| `config.py` | Все настройки: устройство, клавиша, модель, сервер |
+| `install.sh` | Установка зависимостей и autostart |
 
-## Настройка
+## Настройка (config.py)
 
-### Клавиша активации
-В `voice_input.py` измените `KEY_CODE`:
 ```python
-KEY_CODE = ecodes.KEY_RIGHTALT  # Right Alt по умолчанию
+KEYBOARD_DEVICE = "/dev/input/event7"  # evdev устройство клавиатуры
+KEY_CODE = 100                          # 100 = Right Alt
+MODEL_SIZE = "large-v3"                 # tiny/base/small/medium/large-v3
+LANGUAGE = "ru"                         # или "en", или None (авто)
+STT_SERVER = "http://localhost:5055"    # URL сервера (для клиента)
+STT_PORT = 5055                         # порт (для сервера)
+PYTHON = "python3"                      # интерпретатор для tray
 ```
 
-### Устройство ввода
-Если клавиатура не Mistel или event7 не подходит, найдите правильный:
+### Поиск устройства клавиатуры
 ```bash
 python3 -c "
 import evdev
@@ -86,19 +97,4 @@ for path in evdev.list_devices():
     dev = evdev.InputDevice(path)
     print(f'{dev.path}: {dev.name}')
 "
-```
-Затем измените путь в `voice_input.py`:
-```python
-kbd = evdev.InputDevice("/dev/input/event7")  # ← ваш путь
-```
-
-### Модель Whisper
-```python
-MODEL_SIZE = "large-v3"  # варианты: tiny, base, small, medium, large-v3
-```
-
-### Python-интерпретатор для tray
-Если используется pyenv, в `stt_tray.py` проверьте путь:
-```python
-PYTHON = os.path.expanduser("~/.pyenv/versions/3.10.19/bin/python3")
 ```

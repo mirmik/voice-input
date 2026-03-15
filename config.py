@@ -26,7 +26,13 @@ LANGUAGE = "ru"
 # Audio sample rate (16000 is optimal for Whisper)
 SAMPLE_RATE = 16000
 
-# Python interpreter for voice_input.py (used by stt_tray.py).
+# STT server URL (used by client)
+STT_SERVER = "http://localhost:5055"
+
+# STT server port (used by server)
+STT_PORT = 5055
+
+# Python interpreter (used by stt_tray.py to launch server/client).
 # If you use system Python for everything, set to "python3".
 # If you use pyenv/venv, set the full path, e.g.:
 #   PYTHON = "/home/user/.pyenv/versions/3.10.19/bin/python3"
