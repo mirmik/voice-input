@@ -14,6 +14,7 @@ from pynput import keyboard as kb
 
 # --- Config ---
 STT_SERVER = "http://192.168.1.100:5055"  # change to your server IP
+STT_TOKEN = None  # set to match server's STT_TOKEN
 SAMPLE_RATE = 16000
 PUSH_TO_TALK_KEY = kb.Key.alt_r  # Right Alt
 
@@ -24,10 +25,13 @@ stream = None
 
 
 def transcribe(audio):
+    headers = {"Content-Type": "application/octet-stream"}
+    if STT_TOKEN:
+        headers["Authorization"] = f"Bearer {STT_TOKEN}"
     resp = requests.post(
         f"{STT_SERVER}/stt",
         data=audio.tobytes(),
-        headers={"Content-Type": "application/octet-stream"},
+        headers=headers,
         timeout=30,
     )
     resp.raise_for_status()

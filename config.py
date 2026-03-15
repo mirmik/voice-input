@@ -29,6 +29,10 @@ SAMPLE_RATE = 16000
 # STT server URL (used by client)
 STT_SERVER = "http://localhost:5055"
 
+# Shared secret for authentication (set to None to disable)
+# Generate one: python3 -c "import secrets; print(secrets.token_hex(32))"
+STT_TOKEN = None
+
 # STT server port (used by server)
 STT_PORT = 5055
 

@@ -12,7 +12,7 @@ import numpy as np
 from flask import Flask, request, jsonify
 from faster_whisper import WhisperModel
 
-from config import MODEL_SIZE, LANGUAGE, SAMPLE_RATE
+from config import MODEL_SIZE, LANGUAGE, SAMPLE_RATE, STT_TOKEN
 
 HOST = "0.0.0.0"
 PORT = 5055
@@ -20,12 +20,23 @@ PORT = 5055
 print(f"Loading Whisper {MODEL_SIZE}...")
 model = WhisperModel(MODEL_SIZE, device="cuda", compute_type="float16")
 print("Model loaded.")
+if STT_TOKEN:
+    print("Authentication enabled.")
 
 app = Flask(__name__)
 
 
+def check_auth():
+    if not STT_TOKEN:
+        return True
+    token = request.headers.get("Authorization", "").removeprefix("Bearer ")
+    return token == STT_TOKEN
+
+
 @app.route("/stt", methods=["POST"])
 def handle_stt():
+    if not check_auth():
+        return jsonify({"error": "unauthorized"}), 401
     if "audio" in request.files:
         raw = request.files["audio"].read()
         audio = np.frombuffer(raw, dtype=np.float32)

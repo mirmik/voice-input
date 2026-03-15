@@ -16,7 +16,7 @@ import numpy as np
 import requests
 import sounddevice as sd
 
-from config import KEYBOARD_DEVICE, KEY_CODE, SAMPLE_RATE, STT_SERVER
+from config import KEYBOARD_DEVICE, KEY_CODE, SAMPLE_RATE, STT_SERVER, STT_TOKEN
 
 
 def type_text(text):
@@ -28,10 +28,13 @@ def type_text(text):
 
 def transcribe(audio):
     """Send audio to STT server and return text."""
+    headers = {"Content-Type": "application/octet-stream"}
+    if STT_TOKEN:
+        headers["Authorization"] = f"Bearer {STT_TOKEN}"
     resp = requests.post(
         f"{STT_SERVER}/stt",
         data=audio.tobytes(),
-        headers={"Content-Type": "application/octet-stream"},
+        headers=headers,
         timeout=30,
     )
     resp.raise_for_status()
