@@ -54,7 +54,9 @@ def handle_stt():
     if duration < 0.3:
         return jsonify({"text": "", "duration": duration})
 
-    segments, info = model.transcribe(audio, language=LANGUAGE, beam_size=5)
+    prompt = request.args.get("prompt", "") or request.headers.get("X-Initial-Prompt", "")
+    segments, info = model.transcribe(audio, language=LANGUAGE, beam_size=5,
+                                      initial_prompt=prompt or None)
     text = " ".join(s.text.strip() for s in segments).strip()
     return jsonify({"text": text, "duration": duration})
 

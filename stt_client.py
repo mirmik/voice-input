@@ -7,6 +7,7 @@ Requires: pip install evdev sounddevice numpy requests
 Requires: sudo apt install xdotool
 """
 
+import argparse
 import subprocess
 import sys
 
@@ -17,6 +18,22 @@ import requests
 import sounddevice as sd
 
 from config import KEYBOARD_DEVICE, KEY_CODE, SAMPLE_RATE, STT_SERVER, STT_TOKEN
+
+# CLI overrides
+_parser = argparse.ArgumentParser(add_help=False)
+_parser.add_argument("--host", type=str, default=None)
+_parser.add_argument("--port", type=int, default=None)
+_parser.add_argument("--token", type=str, default=None)
+_args, _ = _parser.parse_known_args()
+
+if _args.host or _args.port:
+    from urllib.parse import urlparse
+    _parsed = urlparse(STT_SERVER)
+    _host = _args.host or _parsed.hostname
+    _port = _args.port or _parsed.port or 5079
+    STT_SERVER = f"{_parsed.scheme}://{_host}:{_port}"
+if _args.token:
+    STT_TOKEN = _args.token
 
 
 def type_text(text):
@@ -41,14 +58,26 @@ def transcribe(audio):
     return resp.json().get("text", "")
 
 
+def wait_for_server(max_wait=60):
+    """Wait for STT server to become available."""
+    import time
+    print(f"Waiting for server at {STT_SERVER}...", end="", flush=True)
+    for i in range(max_wait):
+        try:
+            r = requests.get(f"{STT_SERVER}/health", timeout=2)
+            info = r.json()
+            print(f" OK (model: {info.get('model', '?')})")
+            return True
+        except Exception:
+            print(".", end="", flush=True)
+            time.sleep(1)
+    print(" TIMEOUT")
+    return False
+
+
 def main():
-    # Check server
-    try:
-        r = requests.get(f"{STT_SERVER}/health", timeout=5)
-        info = r.json()
-        print(f"Server OK: {STT_SERVER} (model: {info.get('model', '?')})")
-    except Exception as e:
-        print(f"Cannot reach STT server at {STT_SERVER}: {e}")
+    if not wait_for_server():
+        print(f"Cannot reach STT server at {STT_SERVER}")
         sys.exit(1)
 
     kbd = evdev.InputDevice(KEYBOARD_DEVICE)

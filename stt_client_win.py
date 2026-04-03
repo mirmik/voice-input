@@ -6,6 +6,8 @@ Uses pynput for key capture, pyperclip + keyboard for text insertion.
 Requires: pip install sounddevice numpy requests pynput pyperclip keyboard
 """
 
+import argparse
+import os
 import sys
 import numpy as np
 import requests
@@ -13,8 +15,39 @@ import sounddevice as sd
 from pynput import keyboard as kb
 
 # --- Config ---
-STT_SERVER = "http://192.168.1.100:5055"  # change to your server IP
-STT_TOKEN = None  # set to match server's STT_TOKEN
+STT_SERVER = "http://192.168.0.90:5079"
+STT_TOKEN = None
+
+# Load overrides from config file
+_config_candidates = [
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"),
+    os.path.expanduser("~/.config/voice-input/config.json"),
+]
+for _cfg_path in _config_candidates:
+    if os.path.exists(_cfg_path):
+        import json as _json
+        with open(_cfg_path) as _f:
+            _overrides = _json.load(_f)
+        STT_SERVER = _overrides.get("STT_SERVER", STT_SERVER)
+        STT_TOKEN = _overrides.get("STT_TOKEN", STT_TOKEN)
+        break
+
+# CLI overrides
+_parser = argparse.ArgumentParser(add_help=False)
+_parser.add_argument("--host", type=str, default=None)
+_parser.add_argument("--port", type=int, default=None)
+_parser.add_argument("--token", type=str, default=None)
+_args, _ = _parser.parse_known_args()
+
+if _args.host or _args.port:
+    from urllib.parse import urlparse
+    _parsed = urlparse(STT_SERVER)
+    _host = _args.host or _parsed.hostname
+    _port = _args.port or _parsed.port or 5079
+    STT_SERVER = f"{_parsed.scheme}://{_host}:{_port}"
+if _args.token:
+    STT_TOKEN = _args.token
+
 SAMPLE_RATE = 16000
 PUSH_TO_TALK_KEY = kb.Key.alt_r  # Right Alt
 
