@@ -24,7 +24,9 @@ import os
 # --- Defaults ---
 KEYBOARD_DEVICE = "/dev/input/event7"
 KEY_CODE = 100  # KEY_RIGHTALT
-MODEL_SIZE = "large-v3"
+#MODEL_SIZE = "large-v3"
+#MODEL_SIZE = "large-v3-turbo"
+MODEL_SIZE = "large-v2"
 LANGUAGE = "ru"
 SAMPLE_RATE = 16000
 STT_SERVER = "http://localhost:5055"
