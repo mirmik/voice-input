@@ -36,6 +36,7 @@ PYTHON = "python3"
 
 # --- Load user overrides ---
 _config_path = os.path.expanduser("~/.config/voice-input/config.json")
+_overrides = {}
 if os.path.exists(_config_path):
     with open(_config_path) as _f:
         _overrides = json.load(_f)
