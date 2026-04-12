@@ -8,10 +8,9 @@ GET /health — check if server is alive
 """
 
 import atexit
-import io
 import os
 import signal
-import sys
+import time
 
 import numpy as np
 from flask import Flask, request, jsonify
@@ -79,19 +78,57 @@ def remove_pid():
         pass
 
 
+def read_cmdline(pid):
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            raw = f.read()
+    except FileNotFoundError:
+        return None
+    if not raw:
+        return []
+    return [part.decode("utf-8", errors="replace") for part in raw.split(b"\0") if part]
+
+
+def is_our_server_process(pid):
+    cmdline = read_cmdline(pid)
+    if cmdline is None:
+        return None
+    script_name = os.path.basename(__file__)
+    return any(os.path.basename(arg) == script_name for arg in cmdline)
+
+
 def kill_old_server():
     """Kill previously running server if PID file exists."""
     try:
         with open(PID_FILE) as f:
             old_pid = int(f.read().strip())
-        os.kill(old_pid, signal.SIGTERM)
-        print(f"Killed old server (PID {old_pid}).")
-        import time
-        time.sleep(1)
     except (FileNotFoundError, ValueError):
         pass
+        return
+
+    if old_pid == os.getpid():
+        return
+
+    is_ours = is_our_server_process(old_pid)
+    if is_ours is None:
+        remove_pid()
+        return
+    if not is_ours:
+        print(f"Removing stale PID file for foreign process {old_pid}.")
+        remove_pid()
+        return
+
+    try:
+        os.kill(old_pid, signal.SIGTERM)
+        print(f"Killed old server (PID {old_pid}).")
+        time.sleep(1)
     except ProcessLookupError:
         remove_pid()
+    except PermissionError:
+        raise RuntimeError(
+            f"Process {old_pid} looks like {os.path.basename(__file__)}, "
+            "but cannot be terminated. Stop it manually and retry."
+        )
 
 
 if __name__ == "__main__":

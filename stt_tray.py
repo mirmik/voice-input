@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
 System tray indicator for STT.
-Manages stt_server.py (Whisper model) and stt_client.py (push-to-talk).
+Manages stt_client.py (push-to-talk).
 
 Run with: /usr/bin/python3 stt_tray.py
 (must use system Python for GTK/AppIndicator bindings)
@@ -17,7 +17,6 @@ gi.require_version('AyatanaAppIndicator3', '0.1')
 from gi.repository import Gtk, AyatanaAppIndicator3, GLib
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-SERVER_SCRIPT = os.path.join(SCRIPT_DIR, "stt_server.py")
 CLIENT_SCRIPT = os.path.join(SCRIPT_DIR, "stt_client.py")
 
 # Read PYTHON from config.py
@@ -31,7 +30,6 @@ ICON_ON = "audio-input-microphone"
 
 class STTTray:
     def __init__(self):
-        self.server_proc = None
         self.client_proc = None
 
         self.indicator = AyatanaAppIndicator3.Indicator.new(
@@ -57,57 +55,42 @@ class STTTray:
         self.indicator.set_menu(self.menu)
 
     def on_toggle(self, _):
-        if self.server_proc is None:
-            self.start_stt()
+        if self.client_proc is None:
+            self.start_client()
         else:
-            self.stop_stt()
+            self.stop_client()
 
-    def start_stt(self):
-        try:
-            # Start server first (loads Whisper model)
-            self.server_proc = subprocess.Popen(
-                [PYTHON, SERVER_SCRIPT],
-                preexec_fn=os.setsid,
-            )
-            # Wait a moment for server to start, then launch client
-            GLib.timeout_add(3000, self._start_client)
-            self.indicator.set_icon_full(ICON_ON, "STT Active")
-            self.toggle_item.set_label("Stop STT")
-            GLib.timeout_add(1000, self.check_processes)
-        except Exception as e:
-            print(f"Failed to start server: {e}")
-
-    def _start_client(self):
+    def start_client(self):
         try:
             self.client_proc = subprocess.Popen(
                 [PYTHON, CLIENT_SCRIPT],
                 preexec_fn=os.setsid,
             )
+            self.indicator.set_icon_full(ICON_ON, "STT Active")
+            self.toggle_item.set_label("Stop Client")
+            GLib.timeout_add(1000, self.check_processes)
         except Exception as e:
             print(f"Failed to start client: {e}")
-        return False  # don't repeat
 
-    def stop_stt(self):
-        for proc in [self.client_proc, self.server_proc]:
-            if proc:
-                try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-                except ProcessLookupError:
-                    pass
-                proc.wait()
+    def stop_client(self):
+        if self.client_proc:
+            try:
+                os.killpg(os.getpgid(self.client_proc.pid), signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            self.client_proc.wait()
         self.client_proc = None
-        self.server_proc = None
         self.indicator.set_icon_full(ICON_OFF, "STT Inactive")
-        self.toggle_item.set_label("Start STT")
+        self.toggle_item.set_label("Start Client")
 
     def check_processes(self):
-        if self.server_proc and self.server_proc.poll() is not None:
-            self.stop_stt()
+        if self.client_proc and self.client_proc.poll() is not None:
+            self.stop_client()
             return False
-        return self.server_proc is not None
+        return self.client_proc is not None
 
     def on_quit(self, _):
-        self.stop_stt()
+        self.stop_client()
         Gtk.main_quit()
 
 
