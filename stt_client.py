@@ -8,23 +8,42 @@ Requires: sudo apt install xdotool
 """
 
 import argparse
+import json
+import os
 import subprocess
 import sys
 
 import evdev
 from evdev import ecodes
 import numpy as np
-import requests
 import sounddevice as sd
+import requests
 
-from config import KEYBOARD_DEVICE, KEY_CODE, SAMPLE_RATE, STT_SERVER, STT_TOKEN
+from config import KEYBOARD_DEVICE, KEY_CODE, SAMPLE_RATE, STT_SERVER, LLM_PROXY_AUTH_FILE
 
 # CLI overrides
 _parser = argparse.ArgumentParser(add_help=False)
 _parser.add_argument("--host", type=str, default=None)
 _parser.add_argument("--port", type=int, default=None)
-_parser.add_argument("--token", type=str, default=None)
+_parser.add_argument("--auth-file", type=str, default=None)
 _args, _ = _parser.parse_known_args()
+
+
+def load_proxy_auth():
+    auth_path = os.path.expanduser(_args.auth_file or LLM_PROXY_AUTH_FILE)
+    if not os.path.exists(auth_path):
+        return {}
+    with open(auth_path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+_auth = load_proxy_auth()
+_server = _auth.get("server")
+_host_id = _auth.get("host_id")
+_token = _auth.get("token")
+
+if _server:
+    STT_SERVER = _server.rstrip("/")
 
 if _args.host or _args.port:
     from urllib.parse import urlparse
@@ -32,8 +51,15 @@ if _args.host or _args.port:
     _host = _args.host or _parsed.hostname
     _port = _args.port or _parsed.port or 5079
     STT_SERVER = f"{_parsed.scheme}://{_host}:{_port}"
-if _args.token:
-    STT_TOKEN = _args.token
+
+
+def auth_headers():
+    headers = {}
+    if _token:
+        headers["Authorization"] = f"Bearer {_token}"
+    if _host_id:
+        headers["X-LLM-Proxy-Host-ID"] = _host_id
+    return headers
 
 
 def type_text(text):
@@ -45,9 +71,7 @@ def type_text(text):
 
 def transcribe(audio):
     """Send audio to STT server and return text."""
-    headers = {"Content-Type": "application/octet-stream"}
-    if STT_TOKEN:
-        headers["Authorization"] = f"Bearer {STT_TOKEN}"
+    headers = {"Content-Type": "application/octet-stream", **auth_headers()}
     resp = requests.post(
         f"{STT_SERVER}/stt",
         data=audio.tobytes(),
@@ -63,14 +87,18 @@ def wait_for_server(max_wait=60):
     import time
     print(f"Waiting for server at {STT_SERVER}...", end="", flush=True)
     for i in range(max_wait):
-        try:
-            r = requests.get(f"{STT_SERVER}/health", timeout=2)
-            info = r.json()
-            print(f" OK (model: {info.get('model', '?')})")
-            return True
-        except Exception:
-            print(".", end="", flush=True)
-            time.sleep(1)
+        for health_url in (f"{STT_SERVER}/stt/health", f"{STT_SERVER}/health"):
+            try:
+                r = requests.get(health_url, headers=auth_headers(), timeout=2)
+                if r.status_code != 200:
+                    continue
+                info = r.json()
+                print(f" OK (model: {info.get('model', '?')})")
+                return True
+            except Exception:
+                pass
+        print(".", end="", flush=True)
+        time.sleep(1)
     print(" TIMEOUT")
     return False
 

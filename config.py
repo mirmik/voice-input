@@ -11,9 +11,9 @@ Example config.json:
     "MODEL_SIZE": "large-v3",
     "LANGUAGE": "ru",
     "SAMPLE_RATE": 16000,
-    "STT_SERVER": "http://localhost:5055",
+    "STT_SERVER": "https://your-proxy.example.com",
     "STT_PORT": 5055,
-    "STT_TOKEN": "your-secret-token-here",
+    "LLM_PROXY_AUTH_FILE": "~/.config/llm-proxy/client_auth.json",
     "PYTHON": "python3"
 }
 """
@@ -31,7 +31,7 @@ LANGUAGE = "ru"
 SAMPLE_RATE = 16000
 STT_SERVER = "http://localhost:5055"
 STT_PORT = 5055
-STT_TOKEN = None
+LLM_PROXY_AUTH_FILE = "~/.config/llm-proxy/client_auth.json"
 PYTHON = "python3"
 
 # --- Load user overrides ---
