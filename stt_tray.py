@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """
 System tray indicator for STT.
-Manages stt_client.py (push-to-talk).
+Manages stt_client_x11.py (X11 push-to-talk via nemor-link).
 
 Run with: /usr/bin/python3 stt_tray.py
 (must use system Python for GTK/AppIndicator bindings)
@@ -17,7 +17,7 @@ gi.require_version('AyatanaAppIndicator3', '0.1')
 from gi.repository import Gtk, AyatanaAppIndicator3, GLib
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CLIENT_SCRIPT = os.path.join(SCRIPT_DIR, "stt_client.py")
+CLIENT_SCRIPT = os.path.join(SCRIPT_DIR, "stt_client_x11.py")
 
 # Read PYTHON from config.py
 _config = {}
@@ -41,7 +41,7 @@ class STTTray:
 
         self.menu = Gtk.Menu()
 
-        self.toggle_item = Gtk.MenuItem(label="Start STT")
+        self.toggle_item = Gtk.MenuItem(label="Start Client")
         self.toggle_item.connect("activate", self.on_toggle)
         self.menu.append(self.toggle_item)
 
