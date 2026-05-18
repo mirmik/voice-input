@@ -28,11 +28,14 @@ def run_hotkey_loop(recorder, args):
     if keycode == 0:
         raise SystemExit(f"No keycode maps to {key_name!r}")
 
-    root.grab_key(keycode, X.AnyModifier, True, X.GrabModeAsync, X.GrabModeAsync)
+    root.grab_key(keycode, X.AnyModifier, False, X.GrabModeAsync, X.GrabModeAsync)
     root.change_attributes(event_mask=X.KeyPressMask | X.KeyReleaseMask)
     d.sync()
 
-    print(f"Push-to-talk bound on {key_name} (keycode {keycode}). Ctrl+C to exit.\n")
+    print(
+        f"Push-to-talk bound on {key_name} (keycode {keycode}); "
+        "events are suppressed from other X11 clients. Ctrl+C to exit.\n"
+    )
     pending_release_at = None
     fd = d.fileno()
 

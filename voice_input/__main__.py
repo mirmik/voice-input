@@ -43,7 +43,11 @@ def build_parser():
 
     p_client = sub.add_parser("client", help="Run push-to-talk client")
     add_common_client_args(p_client)
-    p_client.add_argument("--key", default="F13", help="X11 keysym to bind")
+    p_client.add_argument(
+        "--key",
+        default="F13",
+        help="X11 keysym to bind, for example F13, Alt_R, or ISO_Level3_Shift",
+    )
 
     p_tray = sub.add_parser("tray", help="Run tray controller")
     add_common_client_args(p_tray)
