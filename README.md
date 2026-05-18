@@ -27,7 +27,7 @@ xdotool/Ctrl+V ← текст ←── JSON ←──────  распоз
 - Пользователь в группе `input` (для evdev без sudo)
 
 ### Windows-клиент
-- `pynput`, `sounddevice`, `numpy`, `requests`, `pyperclip`, `keyboard`
+- `sounddevice`, `numpy`, `requests`, `pyperclip`, `keyboard`
 
 ## Установка (Linux, сервер + клиент на одной машине)
 
