@@ -10,14 +10,14 @@ def add_common_client_args(parser):
     parser.add_argument(
         "--profile",
         default=None,
-        help="STT profile name from ~/.config/llm.json (default: configured default)",
+        help="STT profile name (default: voice-input settings)",
     )
     parser.add_argument(
         "--config",
         default=None,
-        help="Path to nemor-link config (default: ~/.config/llm.json)",
+        help="Path to nemor-link config (default: generated voice-input config)",
     )
-    parser.add_argument("--sample-rate", type=int, default=16000)
+    parser.add_argument("--sample-rate", type=int, default=None)
     parser.add_argument(
         "--monitor",
         action="store_true",

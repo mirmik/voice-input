@@ -27,13 +27,14 @@ xdotool/Ctrl+V ← текст ←── JSON ←──────  распоз
 - Пользователь в группе `input` (для evdev без sudo)
 
 ### Windows-клиент
-- `sounddevice`, `numpy`, `requests`, `pyperclip`, `keyboard`
+- `sounddevice`, `numpy`, `requests`, `pyperclip`, `keyboard`, `pystray`, `pillow`
 
 ## Установка (Linux, сервер + клиент на одной машине)
 
 ```bash
 git clone <repo-url>
 cd voice-input
+pip install -r requirements.txt
 ./install.sh
 ```
 
@@ -60,11 +61,22 @@ python stt_client_win.py
 /usr/bin/python3 stt_tray.py
 ```
 
-### Удалённый доступ
-На клиентской машине в `config.py` (Linux) или в `stt_client_win.py` (Windows) укажите IP сервера:
-```python
-STT_SERVER = "http://192.168.1.100:5055"
+### Настройки tray
+В меню tray есть пункт **Settings...**. Через него можно указать STT backend,
+profile, sample rate и auth-поля для `llm_proxy`.
+
+Приложение хранит свои настройки в:
+```text
+~/.config/voice-input/config.json
 ```
+
+Конкретный адрес backend-а, токены и TLS fingerprint не хранятся в репозитории;
+они должны быть заданы в пользовательском config-е.
+
+
+### Удалённый доступ
+Для удалённого backend-а откройте **Settings...** в tray-меню и задайте URL
+сервера. Значение сохранится в `~/.config/voice-input/config.json`.
 
 ## Файлы
 

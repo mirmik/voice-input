@@ -8,7 +8,12 @@ import numpy as np
 import sounddevice as sd
 
 from voice_input.platforms import load_platform
-from voice_input.settings import load_tool_config
+from voice_input.settings import (
+    build_nemor_config,
+    client_defaults,
+    ensure_runtime_configs,
+    load_tool_config,
+)
 
 
 class Recorder:
@@ -80,8 +85,14 @@ class Recorder:
             print(f" error: {e}")
 
 
-def build_stt(profile=None, config_path=None, monitor=False, health_timeout=None):
-    cfg = nl.load_config(config_path) if config_path else None
+def build_stt(
+    profile=None,
+    config_path=None,
+    config=None,
+    monitor=False,
+    health_timeout=None,
+):
+    cfg = nl.load_config(config_path) if config_path else config
     kwargs = {}
     if health_timeout is not None:
         kwargs["health_timeout"] = health_timeout
@@ -89,17 +100,28 @@ def build_stt(profile=None, config_path=None, monitor=False, health_timeout=None
 
 
 def run(args):
+    ensure_runtime_configs()
     tool_cfg = load_tool_config()
-    profile = args.profile or tool_cfg.get("profile")
-    sample_rate = args.sample_rate or int(tool_cfg.get("sample_rate", 16000))
-    platform = load_platform(args.platform)
+    defaults = client_defaults(tool_cfg)
+    profile = args.profile or defaults["profile"]
+    config_path = args.config or defaults["config"]
+    nemor_config = None if config_path else build_nemor_config(tool_cfg)
+    sample_rate = args.sample_rate or defaults["sample_rate"]
+    monitor = args.monitor or defaults["monitor"]
+    health_timeout = (
+        args.health_timeout
+        if args.health_timeout is not None
+        else defaults["health_timeout"]
+    )
+    platform = load_platform(args.platform or defaults["platform"])
 
     try:
         stt = build_stt(
             profile=profile,
-            config_path=args.config,
-            monitor=args.monitor,
-            health_timeout=args.health_timeout,
+            config_path=config_path,
+            config=nemor_config,
+            monitor=monitor,
+            health_timeout=health_timeout,
         )
     except nl.ConfigError as e:
         print(f"Config error: {e}", file=sys.stderr)
