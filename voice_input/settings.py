@@ -11,6 +11,7 @@ CLIENT_LOG_PATH = os.path.join(CONFIG_DIR, "client.log")
 DEFAULT_STT_PROFILE = "voice-input-stt"
 DEFAULT_STT_SERVER_URL = "http://localhost:5055"
 DEFAULT_SAMPLE_RATE = 16000
+LEGACY_CONFIG_KEYS = {"STT_SERVER", "STT_TOKEN", "TLS_FINGERPRINT"}
 
 
 def default_tool_config():
@@ -45,11 +46,20 @@ def _deep_merge(base, overrides):
 
 
 def _legacy_overrides(raw):
+    # A populated ``stt`` section is the current schema and must always win.
+    # Previously, stale top-level values were applied on every load, so the
+    # settings UI appeared to save a new server while the client kept using
+    # the legacy STT_SERVER value.
+    if isinstance(raw.get("stt"), dict):
+        return raw
+
     stt = {}
     if raw.get("STT_SERVER"):
         stt["server_url"] = raw["STT_SERVER"]
     if raw.get("TLS_FINGERPRINT"):
         stt["tls_fingerprint"] = raw["TLS_FINGERPRINT"]
+    if raw.get("STT_TOKEN"):
+        stt["auth"] = {"token": raw["STT_TOKEN"], "host_id": ""}
     if raw.get("profile"):
         stt["profile"] = raw["profile"]
     if not stt:
@@ -75,6 +85,9 @@ def load_tool_config():
 
 def save_tool_config(config):
     os.makedirs(CONFIG_DIR, exist_ok=True)
+    config = {
+        key: value for key, value in config.items() if key not in LEGACY_CONFIG_KEYS
+    }
     with open(TOOL_CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
         f.write("\n")
