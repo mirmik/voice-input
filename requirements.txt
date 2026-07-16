@@ -2,8 +2,6 @@ nemor-link
 numpy
 sounddevice
 requests
-keyboard
-pyperclip
 pystray
 pillow
 python-xlib; platform_system == "Linux"

@@ -419,9 +419,9 @@ class TextInserter:
 Backends:
 
 - Windows:
-  - clipboard плюс `Ctrl+V`;
-  - optional clipboard restore;
-  - позже: direct typing через `SendInput`.
+  - direct Unicode typing через `SendInput`;
+  - clipboard плюс `Ctrl+V` может быть fallback-методом;
+  - optional clipboard restore для fallback-метода.
 - X11:
   - `xdotool type`;
   - clipboard paste fallback.

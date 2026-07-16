@@ -23,6 +23,10 @@ VK_RMENU = 0xA5
 
 LLKHF_INJECTED = 0x10
 
+INPUT_KEYBOARD = 1
+KEYEVENTF_KEYUP = 0x0002
+KEYEVENTF_UNICODE = 0x0004
+
 
 class KBDLLHOOKSTRUCT(ctypes.Structure):
     _fields_ = (
@@ -32,6 +36,48 @@ class KBDLLHOOKSTRUCT(ctypes.Structure):
         ("time", wintypes.DWORD),
         ("dwExtraInfo", ctypes.c_size_t),
     )
+
+
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = (
+        ("wVk", wintypes.WORD),
+        ("wScan", wintypes.WORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_size_t),
+    )
+
+
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = (
+        ("dx", wintypes.LONG),
+        ("dy", wintypes.LONG),
+        ("mouseData", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", ctypes.c_size_t),
+    )
+
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = (
+        ("uMsg", wintypes.DWORD),
+        ("wParamL", wintypes.WORD),
+        ("wParamH", wintypes.WORD),
+    )
+
+
+class INPUT_UNION(ctypes.Union):
+    _fields_ = (
+        ("mi", MOUSEINPUT),
+        ("ki", KEYBDINPUT),
+        ("hi", HARDWAREINPUT),
+    )
+
+
+class INPUT(ctypes.Structure):
+    _anonymous_ = ("u",)
+    _fields_ = (("type", wintypes.DWORD), ("u", INPUT_UNION))
 
 
 LowLevelKeyboardProc = ctypes.WINFUNCTYPE(
@@ -76,6 +122,12 @@ user32.PostThreadMessageW.argtypes = (
     wintypes.LPARAM,
 )
 user32.PostThreadMessageW.restype = wintypes.BOOL
+user32.SendInput.argtypes = (
+    wintypes.UINT,
+    ctypes.POINTER(INPUT),
+    ctypes.c_int,
+)
+user32.SendInput.restype = wintypes.UINT
 kernel32.GetModuleHandleW.argtypes = (wintypes.LPCWSTR,)
 kernel32.GetModuleHandleW.restype = wintypes.HMODULE
 kernel32.GetCurrentThreadId.argtypes = ()
@@ -85,11 +137,46 @@ kernel32.SetConsoleCtrlHandler.restype = wintypes.BOOL
 
 
 def type_text(text):
-    import keyboard as kbmod
-    import pyperclip
+    """Insert text into the focused window without touching the clipboard."""
+    utf16 = text.encode("utf-16-le")
+    code_units = [
+        int.from_bytes(utf16[offset : offset + 2], "little")
+        for offset in range(0, len(utf16), 2)
+    ]
+    if not code_units:
+        return
 
-    pyperclip.copy(text)
-    kbmod.press_and_release("ctrl+v")
+    inputs = (INPUT * (len(code_units) * 2))()
+    for index, code_unit in enumerate(code_units):
+        key_down = inputs[index * 2]
+        key_down.type = INPUT_KEYBOARD
+        key_down.ki = KEYBDINPUT(
+            wVk=0,
+            wScan=code_unit,
+            dwFlags=KEYEVENTF_UNICODE,
+            time=0,
+            dwExtraInfo=0,
+        )
+
+        key_up = inputs[index * 2 + 1]
+        key_up.type = INPUT_KEYBOARD
+        key_up.ki = KEYBDINPUT(
+            wVk=0,
+            wScan=code_unit,
+            dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP,
+            time=0,
+            dwExtraInfo=0,
+        )
+
+    sent = user32.SendInput(len(inputs), inputs, ctypes.sizeof(INPUT))
+    if sent != len(inputs):
+        error_code = ctypes.get_last_error()
+        if error_code:
+            raise ctypes.WinError(error_code)
+        raise OSError(
+            f"SendInput inserted {sent} of {len(inputs)} keyboard events; "
+            "input may be blocked by Windows integrity-level restrictions"
+        )
 
 
 def _install_right_alt_hook(events):

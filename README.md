@@ -9,7 +9,7 @@ Push-to-talk голосовой ввод через Whisper large-v3. Клиен
 ```
 [Linux/Windows клиент]                    [Сервер (GPU)]
 Right Alt → Микрофон → HTTP POST ──────→ Whisper large-v3
-xdotool/Ctrl+V ← текст ←── JSON ←──────  распознавание
+xdotool/SendInput ← текст ←── JSON ←──────  распознавание
 ```
 
 Сервер загружает модель один раз и обслуживает любое количество клиентов. Модель в VRAM только пока сервер запущен.
@@ -27,7 +27,7 @@ xdotool/Ctrl+V ← текст ←── JSON ←──────  распоз
 - Пользователь в группе `input` (для evdev без sudo)
 
 ### Windows-клиент
-- `sounddevice`, `numpy`, `requests`, `pyperclip`, `keyboard`, `pystray`, `pillow`
+- `sounddevice`, `numpy`, `requests`, `pystray`, `pillow`
 
 ## Установка (Linux, сервер + клиент на одной машине)
 
@@ -84,7 +84,7 @@ profile, sample rate и auth-поля для `llm_proxy`.
 |------|-----------|
 | `stt_server.py` | HTTP-сервер с Whisper (запускается на машине с GPU) |
 | `stt_client.py` | Linux-клиент: evdev push-to-talk → сервер → xdotool |
-| `stt_client_win.py` | Windows-клиент: pynput push-to-talk → сервер → Ctrl+V |
+| `stt_client_win.py` | Windows-клиент: push-to-talk → сервер → SendInput |
 | `stt_tray.py` | XFCE tray-индикатор (управляет сервером и клиентом) |
 | `config.py` | Все настройки: устройство, клавиша, модель, сервер |
 | `install.sh` | Установка зависимостей и autostart |
