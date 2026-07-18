@@ -65,6 +65,17 @@ python3 stt_tray.py
 В меню tray есть пункт **Settings...**. Через него можно указать STT backend,
 profile, sample rate и auth-поля для `llm_proxy`.
 
+Для STT доступны два режима:
+
+- **Nemor Link profile** — приложение читает `~/.config/llm.json` и предлагает
+  выбрать один из профилей с `kind: "stt"`. URL, порядок backend-ов,
+  авторизация и TLS fingerprint полностью берутся из выбранного профиля.
+- **Manual configuration** — URL, имя локального профиля, bearer token,
+  host ID и TLS fingerprint задаются непосредственно в настройках voice-input.
+
+Данные обоих режимов сохраняются раздельно, поэтому переключение режима не
+стирает ручные параметры или ранее выбранный профиль Nemor Link.
+
 Приложение хранит свои настройки в:
 ```text
 ~/.config/voice-input/config.json

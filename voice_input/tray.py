@@ -21,7 +21,7 @@ def client_command(args):
     defaults = client_defaults(cfg)
     cmd = [configured_python(), "-m", "voice_input", "client"]
     profile = args.profile or defaults["profile"]
-    config = args.config
+    config = args.config or defaults["config"]
     sample_rate = args.sample_rate or defaults["sample_rate"]
     monitor = args.monitor or defaults["monitor"]
     health_timeout = (

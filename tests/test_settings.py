@@ -8,6 +8,65 @@ from voice_input import settings
 
 
 class SettingsTests(unittest.TestCase):
+    def test_flat_stt_config_migrates_to_manual_mode(self):
+        normalized = settings._normalize_stt_schema(
+            {
+                "stt": {
+                    "server_url": "https://proxy.example:8090",
+                    "profile": "old-profile",
+                    "tls_fingerprint": "AA:BB",
+                    "auth": {"token": "old-token", "host_id": "old-host"},
+                }
+            }
+        )
+
+        self.assertEqual(normalized["stt"]["mode"], settings.STT_MODE_MANUAL)
+        self.assertEqual(normalized["stt"]["manual"]["profile"], "old-profile")
+        self.assertEqual(
+            normalized["stt"]["manual"]["server_url"],
+            "https://proxy.example:8090",
+        )
+        self.assertEqual(normalized["stt"]["manual"]["auth"]["token"], "old-token")
+
+    def test_manual_mode_builds_inline_nemor_profile(self):
+        config = settings.default_tool_config()
+        config["stt"]["manual"] = {
+            "server_url": "https://proxy.example:8090/stt",
+            "profile": "manual-stt",
+            "tls_fingerprint": "AA:BB",
+            "auth": {"token": "token", "host_id": "workstation"},
+        }
+
+        generated = settings.build_nemor_config(config)
+
+        backend = generated["profiles"]["manual-stt"]["backends"][0]
+        self.assertEqual(backend["url"], "https://proxy.example:8090/stt")
+        self.assertEqual(backend["auth"], "voice-input")
+        self.assertEqual(generated["hosts"]["voice-input"]["token"], "token")
+
+    def test_nemor_link_mode_uses_external_config_and_selected_profile(self):
+        config = settings.default_tool_config()
+        config["stt"]["mode"] = settings.STT_MODE_NEMOR_LINK
+        config["stt"]["nemor_link"]["profile"] = "stt-main"
+
+        active = settings.stt_settings(config)
+        defaults = settings.client_defaults(config)
+
+        self.assertEqual(active["profile"], "stt-main")
+        self.assertEqual(active["config"], settings.NEMOR_CONFIG_PATH)
+        self.assertEqual(defaults["profile"], "stt-main")
+        self.assertEqual(defaults["config"], settings.NEMOR_CONFIG_PATH)
+
+    def test_switching_modes_preserves_both_profile_selections(self):
+        config = settings.default_tool_config()
+        config["stt"]["nemor_link"]["profile"] = "remote-stt"
+        config["stt"]["manual"]["profile"] = "direct-stt"
+
+        config["stt"]["mode"] = settings.STT_MODE_NEMOR_LINK
+        self.assertEqual(settings.stt_settings(config)["profile"], "remote-stt")
+        config["stt"]["mode"] = settings.STT_MODE_MANUAL
+        self.assertEqual(settings.stt_settings(config)["profile"], "direct-stt")
+
     def test_current_stt_section_wins_over_legacy_keys(self):
         raw = {
             "profile": "current-profile",
@@ -55,6 +114,9 @@ class SettingsTests(unittest.TestCase):
             saved = json.loads(config_path.read_text(encoding="utf-8"))
             self.assertNotIn("STT_SERVER", saved)
             self.assertNotIn("STT_TOKEN", saved)
+            self.assertNotIn("profile", saved)
+            self.assertEqual(saved["version"], 2)
+            self.assertEqual(saved["stt"]["mode"], settings.STT_MODE_MANUAL)
 
 
 if __name__ == "__main__":

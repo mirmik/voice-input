@@ -7,6 +7,9 @@ from tkinter import messagebox, ttk
 import nemor_link as nl
 
 from voice_input.settings import (
+    NEMOR_CONFIG_PATH,
+    STT_MODE_MANUAL,
+    STT_MODE_NEMOR_LINK,
     build_nemor_config,
     client_defaults,
     load_tool_config,
@@ -44,6 +47,19 @@ def _show_settings_window(on_saved=None, client_running=None):
     stt = stt_settings(cfg)
     defaults = client_defaults(cfg)
 
+    nemor_config = None
+    nemor_profile_names = []
+    nemor_load_error = ""
+    try:
+        nemor_config = nl.load_config(NEMOR_CONFIG_PATH)
+        nemor_profile_names = [
+            name
+            for name, profile in nemor_config["profiles"].items()
+            if profile.get("kind") == "stt"
+        ]
+    except nl.ConfigError as exc:
+        nemor_load_error = str(exc)
+
     root = tk.Tk()
     root.title("Voice Input Settings")
     root.resizable(False, False)
@@ -53,8 +69,16 @@ def _show_settings_window(on_saved=None, client_running=None):
     frame.grid(row=0, column=0, sticky="nsew")
     frame.columnconfigure(1, weight=1)
 
+    source_var = tk.StringVar(value=stt["mode"])
     server_var = tk.StringVar(value=stt["server_url"])
-    profile_var = tk.StringVar(value=stt["profile"])
+    manual_profile_var = tk.StringVar(value=stt["manual_profile"])
+    nemor_profile = stt["nemor_profile"]
+    if not nemor_profile and nemor_config is not None:
+        default_stt = nemor_config["defaults"].get("stt")
+        nemor_profile = default_stt if default_stt in nemor_profile_names else ""
+    if not nemor_profile and nemor_profile_names:
+        nemor_profile = nemor_profile_names[0]
+    nemor_profile_var = tk.StringVar(value=nemor_profile)
     sample_rate_var = tk.StringVar(value=str(defaults["sample_rate"]))
     python_var = tk.StringVar(value=cfg.get("PYTHON") or "")
     health_var = tk.StringVar(value="" if defaults["health_timeout"] is None else str(defaults["health_timeout"]))
@@ -67,12 +91,62 @@ def _show_settings_window(on_saved=None, client_running=None):
     status_var = tk.StringVar(value="")
 
     row = 0
-    ttk.Label(frame, text="STT server URL").grid(row=row, column=0, sticky="w", pady=4)
-    ttk.Entry(frame, textvariable=server_var, width=44).grid(row=row, column=1, sticky="ew", pady=4)
+    ttk.Label(frame, text="STT source").grid(row=row, column=0, sticky="nw", pady=4)
+    source_buttons = ttk.Frame(frame)
+    source_buttons.grid(row=row, column=1, sticky="w", pady=4)
+    ttk.Radiobutton(
+        source_buttons,
+        text="Nemor Link profile",
+        variable=source_var,
+        value=STT_MODE_NEMOR_LINK,
+    ).grid(row=0, column=0, sticky="w")
+    ttk.Radiobutton(
+        source_buttons,
+        text="Manual configuration",
+        variable=source_var,
+        value=STT_MODE_MANUAL,
+    ).grid(row=1, column=0, sticky="w")
     row += 1
 
-    ttk.Label(frame, text="STT profile").grid(row=row, column=0, sticky="w", pady=4)
-    ttk.Entry(frame, textvariable=profile_var).grid(row=row, column=1, sticky="ew", pady=4)
+    nemor_frame = ttk.LabelFrame(frame, text="Nemor Link", padding=8)
+    nemor_frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(4, 8))
+    nemor_frame.columnconfigure(1, weight=1)
+    ttk.Label(nemor_frame, text="Config").grid(row=0, column=0, sticky="w", pady=4)
+    ttk.Label(nemor_frame, text=NEMOR_CONFIG_PATH).grid(row=0, column=1, sticky="w", pady=4)
+    ttk.Label(nemor_frame, text="STT profile").grid(row=1, column=0, sticky="w", pady=4)
+    nemor_profile_combo = ttk.Combobox(
+        nemor_frame,
+        textvariable=nemor_profile_var,
+        values=nemor_profile_names,
+        state="readonly",
+        width=36,
+    )
+    nemor_profile_combo.grid(row=1, column=1, sticky="ew", pady=4)
+    row += 1
+
+    manual_frame = ttk.LabelFrame(frame, text="Manual STT backend", padding=8)
+    manual_frame.grid(row=row, column=0, columnspan=2, sticky="ew", pady=(4, 8))
+    manual_frame.columnconfigure(1, weight=1)
+    ttk.Label(manual_frame, text="Profile name").grid(row=0, column=0, sticky="w", pady=4)
+    ttk.Entry(manual_frame, textvariable=manual_profile_var).grid(
+        row=0, column=1, sticky="ew", pady=4
+    )
+    ttk.Label(manual_frame, text="Server URL").grid(row=1, column=0, sticky="w", pady=4)
+    ttk.Entry(manual_frame, textvariable=server_var, width=44).grid(
+        row=1, column=1, sticky="ew", pady=4
+    )
+    ttk.Label(manual_frame, text="TLS fingerprint").grid(row=2, column=0, sticky="w", pady=4)
+    ttk.Entry(manual_frame, textvariable=fingerprint_var).grid(
+        row=2, column=1, sticky="ew", pady=4
+    )
+    ttk.Label(manual_frame, text="Bearer token").grid(row=3, column=0, sticky="w", pady=4)
+    ttk.Entry(manual_frame, textvariable=token_var, show="*").grid(
+        row=3, column=1, sticky="ew", pady=4
+    )
+    ttk.Label(manual_frame, text="Host ID").grid(row=4, column=0, sticky="w", pady=4)
+    ttk.Entry(manual_frame, textvariable=host_id_var).grid(
+        row=4, column=1, sticky="ew", pady=4
+    )
     row += 1
 
     ttk.Label(frame, text="Sample rate").grid(row=row, column=0, sticky="w", pady=4)
@@ -96,18 +170,6 @@ def _show_settings_window(on_saved=None, client_running=None):
     ).grid(row=row, column=1, sticky="ew", pady=4)
     row += 1
 
-    ttk.Label(frame, text="TLS fingerprint").grid(row=row, column=0, sticky="w", pady=4)
-    ttk.Entry(frame, textvariable=fingerprint_var).grid(row=row, column=1, sticky="ew", pady=4)
-    row += 1
-
-    ttk.Label(frame, text="Bearer token").grid(row=row, column=0, sticky="w", pady=4)
-    ttk.Entry(frame, textvariable=token_var, show="*").grid(row=row, column=1, sticky="ew", pady=4)
-    row += 1
-
-    ttk.Label(frame, text="Host ID").grid(row=row, column=0, sticky="w", pady=4)
-    ttk.Entry(frame, textvariable=host_id_var).grid(row=row, column=1, sticky="ew", pady=4)
-    row += 1
-
     ttk.Checkbutton(frame, text="Monitor backend health", variable=monitor_var).grid(
         row=row, column=0, columnspan=2, sticky="w", pady=(8, 2)
     )
@@ -128,8 +190,34 @@ def _show_settings_window(on_saved=None, client_running=None):
     buttons = ttk.Frame(frame)
     buttons.grid(row=row, column=0, columnspan=2, sticky="e", pady=(10, 0))
 
+    def update_source_fields(*_args):
+        if source_var.get() == STT_MODE_NEMOR_LINK:
+            manual_frame.grid_remove()
+            nemor_frame.grid()
+            if nemor_load_error:
+                status_var.set(f"Nemor Link config error: {nemor_load_error}")
+            elif not nemor_profile_names:
+                status_var.set("No STT profiles found in the Nemor Link config.")
+            else:
+                status_var.set("")
+        else:
+            nemor_frame.grid_remove()
+            manual_frame.grid()
+            status_var.set("")
+
     def collect_config():
-        profile = profile_var.get().strip() or "voice-input-stt"
+        mode = source_var.get()
+        if mode not in (STT_MODE_MANUAL, STT_MODE_NEMOR_LINK):
+            raise ValueError("Select an STT source.")
+        manual_profile = manual_profile_var.get().strip() or "voice-input-stt"
+        nemor_profile = nemor_profile_var.get().strip()
+        if mode == STT_MODE_NEMOR_LINK:
+            if nemor_load_error:
+                raise ValueError(f"Cannot load Nemor Link config: {nemor_load_error}")
+            if not nemor_profile:
+                raise ValueError("Select a Nemor Link STT profile.")
+            if nemor_profile not in nemor_profile_names:
+                raise ValueError(f"Unknown Nemor Link STT profile: {nemor_profile}")
         try:
             sample_rate = int(sample_rate_var.get().strip())
         except ValueError as exc:
@@ -148,20 +236,25 @@ def _show_settings_window(on_saved=None, client_running=None):
                 raise ValueError("Health timeout must be greater than zero.")
 
         next_cfg = load_tool_config()
-        next_cfg["version"] = 1
+        next_cfg["version"] = 2
         next_cfg["PYTHON"] = python_var.get().strip() or next_cfg.get("PYTHON")
-        next_cfg["profile"] = profile
         next_cfg["sample_rate"] = sample_rate
         next_cfg["monitor"] = bool(monitor_var.get())
         next_cfg["health_timeout"] = health_timeout
         next_cfg["platform"] = None if platform_var.get() == "auto" else platform_var.get()
         next_cfg["stt"] = {
-            "server_url": normalize_server_url(server_var.get()),
-            "profile": profile,
-            "tls_fingerprint": fingerprint_var.get().strip(),
-            "auth": {
-                "token": token_var.get().strip(),
-                "host_id": host_id_var.get().strip(),
+            "mode": mode,
+            "nemor_link": {
+                "profile": nemor_profile,
+            },
+            "manual": {
+                "server_url": normalize_server_url(server_var.get()),
+                "profile": manual_profile,
+                "tls_fingerprint": fingerprint_var.get().strip(),
+                "auth": {
+                    "token": token_var.get().strip(),
+                    "host_id": host_id_var.get().strip(),
+                },
             },
         }
         return next_cfg
@@ -194,7 +287,11 @@ def _show_settings_window(on_saved=None, client_running=None):
         def worker():
             try:
                 stt_cfg = stt_settings(next_cfg)
-                client = nl.stt(name=stt_cfg["profile"], config=build_nemor_config(next_cfg))
+                if stt_cfg["mode"] == STT_MODE_NEMOR_LINK:
+                    test_config = nl.load_config(NEMOR_CONFIG_PATH)
+                else:
+                    test_config = build_nemor_config(next_cfg)
+                client = nl.stt(name=stt_cfg["profile"], config=test_config)
                 try:
                     results = client.pool.probe_all()
                 finally:
@@ -219,6 +316,8 @@ def _show_settings_window(on_saved=None, client_running=None):
     ttk.Button(buttons, text="Save & Close", command=save_and_close).grid(row=0, column=2, padx=(0, 6))
     ttk.Button(buttons, text="Cancel", command=root.destroy).grid(row=0, column=3)
 
+    source_var.trace_add("write", update_source_fields)
+    update_source_fields()
     root.bind("<Return>", lambda _event: save_and_close())
     root.bind("<Escape>", lambda _event: root.destroy())
     root.mainloop()
