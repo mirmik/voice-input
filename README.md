@@ -58,7 +58,7 @@ python3 stt_client.py
 python stt_client_win.py
 
 # Tray-индикатор (XFCE):
-/usr/bin/python3 stt_tray.py
+python3 stt_tray.py
 ```
 
 ### Настройки tray

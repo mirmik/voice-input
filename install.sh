@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo "=== STT Voice Input — Installation ==="
 echo ""
 
@@ -10,7 +12,9 @@ sudo apt install -y python3-gi gir1.2-ayatanaappindicator3-0.1 xdotool
 
 # --- Python dependencies ---
 echo "[2/6] Installing Python packages..."
-pip install faster-whisper evdev sounddevice numpy flask requests
+PYTHON_BIN="$(python3 -c 'import sys; print(sys.executable)')"
+"$PYTHON_BIN" -m pip install -r "$SCRIPT_DIR/requirements.txt"
+"$PYTHON_BIN" -m pip install faster-whisper evdev flask
 
 # --- Add user to input group (for evdev without sudo) ---
 echo "[3/5] Adding user to 'input' group..."
@@ -26,11 +30,11 @@ echo "[4/6] Creating user config..."
 CONFIG_DIR="$HOME/.config/voice-input"
 if [ ! -f "$CONFIG_DIR/config.json" ]; then
     mkdir -p "$CONFIG_DIR"
-    cat > "$CONFIG_DIR/config.json" << 'CONF'
+    cat > "$CONFIG_DIR/config.json" << CONF
 {
     "KEYBOARD_DEVICE": "/dev/input/event7",
     "KEY_CODE": 100,
-    "PYTHON": "python3"
+    "PYTHON": "${PYTHON_BIN}"
 }
 CONF
     echo "  Created $CONFIG_DIR/config.json — edit to match your setup."
@@ -40,14 +44,13 @@ fi
 
 # --- Install XFCE autostart entry ---
 echo "[5/6] Installing XFCE autostart entry..."
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p ~/.config/autostart
 cat > ~/.config/autostart/stt-tray.desktop << EOF
 [Desktop Entry]
 Type=Application
 Name=STT Tray
 Comment=Speech-to-text tray indicator
-Exec=/usr/bin/python3 ${SCRIPT_DIR}/stt_tray.py
+Exec=${PYTHON_BIN} ${SCRIPT_DIR}/stt_tray.py
 Icon=audio-input-microphone
 X-GNOME-Autostart-enabled=true
 EOF
@@ -60,7 +63,7 @@ python3 -c "from faster_whisper import WhisperModel; WhisperModel('large-v3', de
 echo ""
 echo "=== Installation complete ==="
 echo ""
-echo "To start manually:  /usr/bin/python3 ${SCRIPT_DIR}/stt_tray.py"
+echo "To start manually:  ${PYTHON_BIN} ${SCRIPT_DIR}/stt_tray.py"
 echo "Or re-login for autostart."
 echo ""
 echo "Usage: click tray icon → Start STT → hold Right Alt to record."
