@@ -2,6 +2,7 @@
 
 import sys
 import threading
+from types import MethodType
 
 import nemor_link as nl
 import numpy as np
@@ -96,7 +97,24 @@ def build_stt(
     kwargs = {}
     if health_timeout is not None:
         kwargs["health_timeout"] = health_timeout
-    return nl.stt(name=profile, monitor=monitor, config=cfg, **kwargs)
+    client = nl.stt(name=profile, monitor=monitor, config=cfg, **kwargs)
+
+    # Some proxies expose several STT runtimes through one /stt endpoint.
+    # Nemor Link owns authentication, so extend its header factory here rather
+    # than duplicating the STT client.  Profiles may add a ``headers`` object
+    # to a backend, e.g. {"X-STT-Runtime": "stt-gigaam"}.
+    original_auth_headers = client.auth_headers
+
+    def auth_headers(self, backend):
+        headers = original_auth_headers(backend)
+        extra_headers = backend.get("headers") or {}
+        if not isinstance(extra_headers, dict):
+            raise ValueError("STT backend 'headers' must be an object")
+        headers.update({str(key): str(value) for key, value in extra_headers.items()})
+        return headers
+
+    client.auth_headers = MethodType(auth_headers, client)
+    return client
 
 
 def run(args):
