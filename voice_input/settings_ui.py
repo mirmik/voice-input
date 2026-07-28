@@ -165,7 +165,7 @@ def _show_settings_window(on_saved=None, client_running=None):
     ttk.Combobox(
         frame,
         textvariable=platform_var,
-        values=("auto", "win", "x11"),
+        values=("auto", "wayland", "x11", "win"),
         state="readonly",
     ).grid(row=row, column=1, sticky="ew", pady=4)
     row += 1

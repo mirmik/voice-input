@@ -3,6 +3,7 @@
 Push-to-talk голосовой ввод через Whisper large-v3. Клиент-серверная архитектура: сервер с GPU обрабатывает речь, клиенты подключаются по сети.
 
 Зажал Right Alt → говоришь → отпустил → текст вставляется в активное окно.
+Поддерживаются Windows, X11 и Plasma/Wayland.
 
 ## Архитектура
 
@@ -23,7 +24,8 @@ xdotool/SendInput ← текст ←── JSON ←──────  расп�
 
 ### Linux-клиент
 - `evdev`, `sounddevice`, `numpy`, `requests`
-- `xdotool` для вставки текста
+- X11: `xdotool`
+- Wayland: `wl-clipboard`, `ydotool` и запущенный `ydotoold`
 - Пользователь в группе `input` (для evdev без sudo)
 
 ### Windows-клиент
@@ -53,6 +55,9 @@ python3 stt_server.py
 
 # Linux-клиент (на той же или другой машине):
 python3 stt_client.py
+
+# Явный запуск Plasma/Wayland backend:
+python3 stt_client_wayland.py --keyboard /dev/input/event7 --key-code 100
 
 # Windows-клиент:
 python stt_client_win.py
@@ -111,6 +116,33 @@ STT_SERVER = "http://localhost:5055"    # URL сервера (для клиен�
 STT_PORT = 5055                         # порт (для сервера)
 PYTHON = "python3"                      # интерпретатор для tray
 ```
+
+### Plasma/Wayland
+
+Wayland backend выбирается автоматически по `XDG_SESSION_TYPE`. Он читает
+PTT-клавишу через evdev, копирует распознанный Unicode-текст через `wl-copy` и
+эмулирует только `Ctrl+V` через `ydotool`.
+
+Для Ubuntu:
+
+```bash
+sudo apt install wl-clipboard ydotool ydotoold
+sudo usermod -aG input "$USER"
+```
+
+После добавления в группу нужен полный выход из сессии и повторный вход.
+`ydotoold` должен быть запущен и иметь доступ к `/dev/uinput`; способ запуска
+зависит от версии пакета. Проверка:
+
+```bash
+ydotool key 29:1 47:1 47:0 29:0
+```
+
+Путь клавиатуры и код клавиши можно оставить в
+`~/.config/voice-input/config.json` как `KEYBOARD_DEVICE` и `KEY_CODE` либо
+передать аргументами `--keyboard` и `--key-code`. Лучше использовать стабильный
+путь из `/dev/input/by-id/`, а не меняющийся номер `eventN`. В отличие от X11
+grab, evdev backend пока не подавляет физическую PTT-клавишу.
 
 ### Поиск устройства клавиатуры
 ```bash

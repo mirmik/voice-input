@@ -5,3 +5,4 @@ requests
 pystray
 pillow
 python-xlib; platform_system == "Linux"
+evdev; platform_system == "Linux"

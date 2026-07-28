@@ -1,0 +1,10 @@
+[Unit]
+Description=Wayland virtual input daemon for voice-input
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ydotoold
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

@@ -31,7 +31,7 @@ def add_common_client_args(parser):
     )
     parser.add_argument(
         "--platform",
-        choices=("x11", "win"),
+        choices=("wayland", "x11", "win"),
         default=None,
         help="Override platform backend",
     )
@@ -45,8 +45,19 @@ def build_parser():
     add_common_client_args(p_client)
     p_client.add_argument(
         "--key",
-        default="F13",
+        default=None,
         help="X11 keysym to bind, for example F13, Alt_R, or ISO_Level3_Shift",
+    )
+    p_client.add_argument(
+        "--keyboard",
+        default=None,
+        help="Wayland evdev keyboard device, for example /dev/input/event7",
+    )
+    p_client.add_argument(
+        "--key-code",
+        type=int,
+        default=None,
+        help="Wayland evdev PTT key code (default: configured KEY_CODE or 100)",
     )
 
     p_tray = sub.add_parser("tray", help="Run tray controller")
