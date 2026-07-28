@@ -3,6 +3,7 @@
 import os
 import shutil
 import subprocess
+import time
 
 import evdev
 from evdev import ecodes
@@ -11,7 +12,9 @@ from voice_input.settings import load_tool_config
 
 
 DEFAULT_KEY_CODE = ecodes.KEY_RIGHTALT
-PASTE_KEYS = ("29:1", "47:1", "47:0", "29:0")  # Ctrl+V
+PASTE_KEYS = ("SHIFT+INSERT",)
+CLIPBOARD_RESTORE_DELAY = 0.35
+TEXT_MIME_TYPES = ("text/plain;charset=utf-8", "text/plain", "UTF8_STRING")
 
 
 def _require_command(name, package):
@@ -22,26 +25,94 @@ def _require_command(name, package):
         )
 
 
-def type_text(text):
-    """Insert arbitrary Unicode through the Wayland clipboard and Ctrl+V."""
-    if not text:
-        return
-    _require_command("wl-copy", "wl-clipboard")
-    _require_command("ydotool", "ydotool ydotoold")
-
+def _set_clipboard_text(text):
     subprocess.run(
         ["wl-copy", "--type", "text/plain;charset=utf-8"],
         input=text,
         text=True,
         check=True,
     )
+
+
+def _snapshot_clipboard():
+    """Capture one representative MIME payload, including images and text."""
+    types_result = subprocess.run(
+        ["wl-paste", "--list-types"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if types_result.returncode != 0:
+        return None
+    offered = types_result.stdout.decode("utf-8", errors="replace").splitlines()
+    if not offered:
+        return None
+    mime_type = next(
+        (mime for mime in TEXT_MIME_TYPES if mime in offered),
+        offered[0],
+    )
+    payload_result = subprocess.run(
+        ["wl-paste", "--no-newline", "--type", mime_type],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if payload_result.returncode != 0:
+        return None
+    return mime_type, payload_result.stdout
+
+
+def _clipboard_contains_text(text):
+    result = subprocess.run(
+        ["wl-paste", "--no-newline", "--type", "text/plain;charset=utf-8"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return result.returncode == 0 and result.stdout == text.encode("utf-8")
+
+
+def _restore_clipboard(snapshot):
+    if snapshot is None:
+        subprocess.run(["wl-copy", "--clear"], check=True)
+        return
+    mime_type, payload = snapshot
+    subprocess.run(
+        ["wl-copy", "--type", mime_type],
+        input=payload,
+        check=True,
+    )
+
+
+def _restore_clipboard_if_unchanged(snapshot, inserted_text):
+    # Do not overwrite something the user copied while STT was finishing.
+    if _clipboard_contains_text(inserted_text):
+        _restore_clipboard(snapshot)
+
+
+def type_text(text):
+    """Paste Unicode text and restore the previous Wayland clipboard value."""
+    if not text:
+        return
+    _require_command("wl-copy", "wl-clipboard")
+    _require_command("wl-paste", "wl-clipboard")
+    _require_command("ydotool", "ydotool ydotoold")
+
+    previous_clipboard = _snapshot_clipboard()
+    _set_clipboard_text(text)
     try:
-        subprocess.run(["ydotool", "key", *PASTE_KEYS], check=True)
+        subprocess.run(
+            ["ydotool", "key", "--key-delay", "100", *PASTE_KEYS],
+            check=True,
+        )
     except subprocess.CalledProcessError as exc:
+        _restore_clipboard_if_unchanged(previous_clipboard, text)
         raise RuntimeError(
-            "ydotool could not inject Ctrl+V. Make sure ydotoold is running "
+            "ydotool could not inject Shift+Insert. Make sure ydotoold is running "
             "and can access /dev/uinput."
         ) from exc
+    time.sleep(CLIPBOARD_RESTORE_DELAY)
+    _restore_clipboard_if_unchanged(previous_clipboard, text)
 
 
 def _supports_key(device, key_code):
