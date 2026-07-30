@@ -178,6 +178,30 @@ def _find_keyboard(configured_path, key_code):
     )
 
 
+def _grab_with_passthrough(keyboard):
+    """Grab a keyboard and expose a virtual clone for non-PTT events."""
+    try:
+        passthrough = evdev.UInput.from_device(
+            keyboard,
+            name=f"{keyboard.name} (voice-input passthrough)",
+        )
+    except (OSError, PermissionError) as exc:
+        raise RuntimeError(
+            "Cannot create a virtual keyboard through /dev/uinput. "
+            "Make sure the current user has read/write access to /dev/uinput."
+        ) from exc
+
+    try:
+        keyboard.grab()
+    except (OSError, PermissionError) as exc:
+        passthrough.close()
+        raise RuntimeError(
+            f"Cannot exclusively grab {keyboard.path}. Another input remapper "
+            "may already own the device."
+        ) from exc
+    return passthrough
+
+
 def run_hotkey_loop(recorder, args):
     cfg = load_tool_config()
     keyboard_path = args.keyboard or cfg.get("KEYBOARD_DEVICE")
@@ -189,16 +213,19 @@ def run_hotkey_loop(recorder, args):
     _require_command("ydotool", "ydotool ydotoold")
     keyboard = _find_keyboard(keyboard_path, key_code)
     key_name = ecodes.KEY.get(key_code, f"code {key_code}")
+    passthrough = _grab_with_passthrough(keyboard)
     print(f"Keyboard: {keyboard.name} ({keyboard.path})")
     print(
         f"Push-to-talk: {key_name} ({key_code}). "
-        "The physical key is not suppressed. Ctrl+C to exit.\n"
+        "The PTT key is suppressed; all other keyboard events pass through. "
+        "Ctrl+C to exit.\n"
     )
 
     down = False
     try:
         for event in keyboard.read_loop():
             if event.type != ecodes.EV_KEY or event.code != key_code:
+                passthrough.write_event(event)
                 continue
             if event.value == 1 and not down:
                 down = True
@@ -209,5 +236,7 @@ def run_hotkey_loop(recorder, args):
     except KeyboardInterrupt:
         print("\nExiting...")
     finally:
+        keyboard.ungrab()
+        passthrough.close()
         keyboard.close()
         print("Done.")

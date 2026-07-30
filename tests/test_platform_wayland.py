@@ -1,7 +1,9 @@
 import subprocess
 import unittest
-from unittest.mock import call, patch
+from types import SimpleNamespace
+from unittest.mock import Mock, call, patch
 
+from evdev import ecodes
 from voice_input import platform_wayland
 
 
@@ -69,6 +71,68 @@ class WaylandTextInsertionTests(unittest.TestCase):
         )
 
         restore.assert_not_called()
+
+
+class WaylandHotkeyTests(unittest.TestCase):
+    @patch("voice_input.platform_wayland.load_tool_config", return_value={})
+    @patch("voice_input.platform_wayland._require_command")
+    @patch("voice_input.platform_wayland.evdev.UInput.from_device")
+    @patch("voice_input.platform_wayland._find_keyboard")
+    def test_ptt_is_suppressed_and_other_events_are_forwarded(
+        self,
+        find_keyboard,
+        from_device,
+        _require_command,
+        _load_config,
+    ):
+        ordinary_key = SimpleNamespace(
+            type=ecodes.EV_KEY,
+            code=ecodes.KEY_A,
+            value=1,
+        )
+        sync = SimpleNamespace(type=ecodes.EV_SYN, code=0, value=0)
+        ptt_down = SimpleNamespace(
+            type=ecodes.EV_KEY,
+            code=ecodes.KEY_RIGHTALT,
+            value=1,
+        )
+        ptt_repeat = SimpleNamespace(
+            type=ecodes.EV_KEY,
+            code=ecodes.KEY_RIGHTALT,
+            value=2,
+        )
+        ptt_up = SimpleNamespace(
+            type=ecodes.EV_KEY,
+            code=ecodes.KEY_RIGHTALT,
+            value=0,
+        )
+        keyboard = Mock()
+        keyboard.name = "Test keyboard"
+        keyboard.path = "/dev/input/event7"
+        keyboard.read_loop.return_value = iter(
+            [ordinary_key, sync, ptt_down, ptt_repeat, ptt_up]
+        )
+        find_keyboard.return_value = keyboard
+        passthrough = from_device.return_value
+        recorder = Mock()
+        args = SimpleNamespace(keyboard=None, key_code=ecodes.KEY_RIGHTALT)
+
+        platform_wayland.run_hotkey_loop(recorder, args)
+
+        from_device.assert_called_once_with(
+            keyboard,
+            name="Test keyboard (voice-input passthrough)",
+        )
+        keyboard.grab.assert_called_once_with()
+        passthrough.write_event.assert_has_calls(
+            [call(ordinary_key), call(sync)]
+        )
+        self.assertEqual(passthrough.write_event.call_count, 2)
+        recorder.start.assert_called_once_with()
+        recorder.stop_async.assert_called_once_with()
+        keyboard.ungrab.assert_called_once_with()
+        passthrough.close.assert_called_once_with()
+        keyboard.close.assert_called_once_with()
 
 
 if __name__ == "__main__":
