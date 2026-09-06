@@ -8,6 +8,20 @@ from voice_input import settings
 
 
 class SettingsTests(unittest.TestCase):
+    def test_vad_target_validation_and_persistence(self):
+        for value in (0, -1, 24, 25, "nan", "inf", None, True, "bad"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                settings.validate_vad_target_seconds(value)
+        self.assertEqual(settings.validate_vad_target_seconds("5.5"), 5.5)
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            settings, "CONFIG_DIR", directory
+        ), patch.object(settings, "TOOL_CONFIG_PATH", str(Path(directory) / "config.json")):
+            cfg = settings.load_tool_config()
+            self.assertEqual(cfg["vad_target_seconds"], 15)
+            cfg["vad_target_seconds"] = 5.5
+            settings.save_tool_config(cfg)
+            self.assertEqual(settings.load_tool_config()["vad_target_seconds"], 5.5)
+
     def test_flat_stt_config_migrates_to_manual_mode(self):
         normalized = settings._normalize_stt_schema(
             {

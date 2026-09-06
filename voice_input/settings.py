@@ -1,6 +1,7 @@
 """Shared voice-input configuration helpers."""
 
 import json
+import math
 import os
 
 
@@ -12,6 +13,7 @@ NEMOR_CONFIG_PATH = os.path.expanduser("~/.config/llm.json")
 DEFAULT_STT_PROFILE = "voice-input-stt"
 DEFAULT_STT_SERVER_URL = "http://localhost:5055"
 DEFAULT_SAMPLE_RATE = 16000
+DEFAULT_VAD_TARGET_SECONDS = 15.0
 STT_MODE_MANUAL = "manual"
 STT_MODE_NEMOR_LINK = "nemor-link"
 STT_MODES = {STT_MODE_MANUAL, STT_MODE_NEMOR_LINK}
@@ -23,6 +25,7 @@ def default_tool_config():
         "version": 2,
         "PYTHON": "python" if os.name == "nt" else "python3",
         "sample_rate": DEFAULT_SAMPLE_RATE,
+        "vad_target_seconds": DEFAULT_VAD_TARGET_SECONDS,
         "monitor": False,
         "start_client_with_tray": False,
         "health_timeout": 0.6,
@@ -215,3 +218,13 @@ def client_defaults(config=None):
         "health_timeout": cfg.get("health_timeout"),
         "platform": cfg.get("platform"),
     }
+
+
+def validate_vad_target_seconds(value):
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Minimum segment duration must be a number in seconds.") from exc
+    if isinstance(value, bool) or not math.isfinite(seconds) or not 1 <= seconds < 24:
+        raise ValueError("Minimum segment duration must be at least 1 and less than 24 seconds.")
+    return seconds

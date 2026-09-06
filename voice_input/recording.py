@@ -1,5 +1,6 @@
 """Recording pipeline: audio callback -> local VAD -> ordered HTTP requests."""
 
+import json
 import queue
 import threading
 import uuid
@@ -13,9 +14,11 @@ from voice_input.vad import SAMPLE_RATE, Segmenter, SileroVAD
 
 
 class Recorder:
-    def __init__(self, stt_client, sample_rate, type_text, vad=None, recovery_dir=None):
+    def __init__(self, stt_client, sample_rate, type_text, vad=None, recovery_dir=None,
+                 target_seconds=settings.DEFAULT_VAD_TARGET_SECONDS):
         if sample_rate != SAMPLE_RATE:
             raise ValueError('Client Silero segmentation requires sample_rate=16000')
+        self.target_seconds = settings.validate_vad_target_seconds(target_seconds)
         self.stt = stt_client
         self.sample_rate = sample_rate
         self.type_text = type_text
@@ -40,7 +43,8 @@ class Recorder:
             if self.active or self.closed:
                 return
             session = {'path': self.recovery_dir / (uuid.uuid4().hex + '.f32'),
-                       'texts': [], 'error': None, 'samples': 0}
+                       'texts': [], 'inserted': 0, 'insertion_uncertain': False,
+                       'error': None, 'samples': 0}
             # Establish recovery storage before accepting microphone input.
             session['file'] = session['path'].open('xb')
             self.audio_queue.put(('start', session))
@@ -104,7 +108,10 @@ class Recorder:
                     return
                 if kind == 'start':
                     session = payload
-                    segmenter = Segmenter(self.vad, lambda audio, s=session: self.send_queue.put((s, audio)))
+                    segmenter = Segmenter(
+                        self.vad, lambda audio, s=session: self.send_queue.put((s, audio)),
+                        target_seconds=self.target_seconds,
+                    )
                 elif kind == 'audio':
                     audio, status = payload
                     session['file'].write(audio.astype('<f4').tobytes())
@@ -146,6 +153,13 @@ class Recorder:
                     text = (result or {}).get('text', '').strip()
                     if text:
                         session['texts'].append(text)
+                        prefix = ' ' if session['inserted'] else ''
+                        # An insertion adapter may fail after typing some characters.
+                        session['insertion_uncertain'] = True
+                        self.type_text(prefix + text)
+                        session['insertion_uncertain'] = False
+                        session['inserted'] += 1
+                        print(f'  >>> {text}', flush=True)
             except Exception as exc:
                 session['error'] = str(exc)
                 if audio is None:
@@ -157,11 +171,7 @@ class Recorder:
         if session['error']:
             self._report_failure(session)
             return
-        text = ' '.join(session['texts'])
-        if text:
-            self.type_text(text)
-            print(f'  >>> {text}', flush=True)
-        else:
+        if not session['texts']:
             print('  (no speech detected)', flush=True)
         session['path'].unlink(missing_ok=True)
 
@@ -171,5 +181,11 @@ class Recorder:
         try:
             session['path'].with_suffix('.txt').write_text(
                 '\n'.join(session['texts']), encoding='utf-8')
+            session['path'].with_suffix('.json').write_text(json.dumps({
+                'sample_rate': self.sample_rate,
+                'error': session['error'],
+                'inserted_segments': session['inserted'],
+                'last_insertion_may_be_partial': session['insertion_uncertain'],
+            }, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         except OSError as exc:
             print(f'  Cannot save partial transcript: {exc}', flush=True)

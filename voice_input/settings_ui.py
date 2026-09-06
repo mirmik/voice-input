@@ -8,6 +8,8 @@ import nemor_link as nl
 
 from voice_input.settings import (
     NEMOR_CONFIG_PATH,
+    DEFAULT_VAD_TARGET_SECONDS,
+    validate_vad_target_seconds,
     STT_MODE_MANUAL,
     STT_MODE_NEMOR_LINK,
     build_nemor_config,
@@ -80,6 +82,7 @@ def _show_settings_window(on_saved=None, client_running=None):
         nemor_profile = nemor_profile_names[0]
     nemor_profile_var = tk.StringVar(value=nemor_profile)
     sample_rate_var = tk.StringVar(value=str(defaults["sample_rate"]))
+    vad_target_var = tk.StringVar(value=str(cfg.get("vad_target_seconds", DEFAULT_VAD_TARGET_SECONDS)))
     python_var = tk.StringVar(value=cfg.get("PYTHON") or "")
     health_var = tk.StringVar(value="" if defaults["health_timeout"] is None else str(defaults["health_timeout"]))
     platform_var = tk.StringVar(value=defaults["platform"] or "auto")
@@ -151,6 +154,14 @@ def _show_settings_window(on_saved=None, client_running=None):
 
     ttk.Label(frame, text="Sample rate").grid(row=row, column=0, sticky="w", pady=4)
     ttk.Entry(frame, textvariable=sample_rate_var).grid(row=row, column=1, sticky="ew", pady=4)
+    row += 1
+
+    ttk.Label(frame, text="Minimum segment duration (s)").grid(row=row, column=0, sticky="w", pady=4)
+    ttk.Entry(frame, textvariable=vad_target_var).grid(row=row, column=1, sticky="ew", pady=4)
+    row += 1
+    ttk.Label(frame, text="Send at the next pause after this duration (1 to <24 s).").grid(
+        row=row, column=0, columnspan=2, sticky="w", pady=(0, 4)
+    )
     row += 1
 
     ttk.Label(frame, text="Python command").grid(row=row, column=0, sticky="w", pady=4)
@@ -225,6 +236,8 @@ def _show_settings_window(on_saved=None, client_running=None):
         if sample_rate != 16000:
             raise ValueError("Client Silero segmentation requires sample rate 16000.")
 
+        vad_target_seconds = validate_vad_target_seconds(vad_target_var.get().strip())
+
         raw_health = health_var.get().strip()
         health_timeout = None
         if raw_health:
@@ -239,6 +252,7 @@ def _show_settings_window(on_saved=None, client_running=None):
         next_cfg["version"] = 2
         next_cfg["PYTHON"] = python_var.get().strip() or next_cfg.get("PYTHON")
         next_cfg["sample_rate"] = sample_rate
+        next_cfg["vad_target_seconds"] = vad_target_seconds
         next_cfg["monitor"] = bool(monitor_var.get())
         next_cfg["health_timeout"] = health_timeout
         next_cfg["platform"] = None if platform_var.get() == "auto" else platform_var.get()

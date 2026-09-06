@@ -8,6 +8,7 @@ import nemor_link as nl
 from voice_input.platforms import load_platform
 from voice_input.recording import Recorder
 from voice_input.settings import (
+    DEFAULT_VAD_TARGET_SECONDS,
     build_nemor_config,
     client_defaults,
     ensure_runtime_configs,
@@ -85,7 +86,10 @@ def run(args):
             print("No STT backend is reachable.", file=sys.stderr)
             return 1
 
-        recorder = Recorder(stt, sample_rate, platform.type_text)
+        recorder = Recorder(
+            stt, sample_rate, platform.type_text,
+            target_seconds=tool_cfg.get("vad_target_seconds", DEFAULT_VAD_TARGET_SECONDS),
+        )
         try:
             platform.run_hotkey_loop(recorder, args)
         finally:
