@@ -1,159 +1,140 @@
-# STT Voice Input
+# Voice Input
 
-Push-to-talk голосовой ввод через Whisper large-v3. Клиент-серверная архитектура: сервер с GPU обрабатывает речь, клиенты подключаются по сети.
+Голосовой ввод из системного трея: удерживаешь клавишу, говоришь, отпускаешь —
+распознанный текст вставляется в активное окно. Работает на Linux (X11 и Wayland)
+и Windows. Распознавание выполняет отдельный STT backend, напрямую или через
+`llm-proxy`; клиент подключается к нему через Nemor Link.
 
-Зажал Right Alt → говоришь → отпустил → текст вставляется в активное окно.
-Поддерживаются Windows, X11 и Plasma/Wayland.
+## Установка и запуск
 
-## Архитектура
-
-```
-[Linux/Windows клиент]                    [Сервер (GPU)]
-Right Alt → Микрофон → HTTP POST ──────→ Whisper large-v3
-xdotool/SendInput ← текст ←── JSON ←──────  распознавание
-```
-
-Сервер загружает модель один раз и обслуживает любое количество клиентов. Модель в VRAM только пока сервер запущен.
-
-## Требования
-
-### Сервер
-- NVIDIA GPU с поддержкой CUDA
-- Python 3.10+
-- `faster-whisper`, `flask`, `numpy`
-
-### Linux-клиент
-- `evdev`, `sounddevice`, `numpy`, `requests`
-- X11: `xdotool`
-- Wayland: `wl-clipboard`, `ydotool` и запущенный `ydotoold`
-- Пользователь в группе `input` (для evdev без sudo)
-
-### Windows-клиент
-- `sounddevice`, `numpy`, `requests`, `pystray`, `pillow`
-
-## Установка (Linux, сервер + клиент на одной машине)
+Linux (Debian/Ubuntu):
 
 ```bash
-git clone <repo-url>
-cd voice-input
-pip install -r requirements.txt
 ./install.sh
+.venv-client/bin/python stt_tray.py
 ```
 
-## Использование
+Установщик создаёт клиентское окружение `.venv-client`, устанавливает системные
+зависимости и добавляет tray в автозапуск при входе в графическую сессию.
+После добавления пользователя в группу `input` нужно выйти из сессии и войти снова.
 
-### Через tray (Linux)
-После логина иконка микрофона в трее.
-- **Start STT** — запускает сервер (загружает модель) + клиент
-- **Stop STT** — останавливает оба, освобождает VRAM
-- **Quit** — убирает из трея
+Windows:
 
-### Ручной запуск
-```bash
-# Сервер (на машине с GPU):
-python3 stt_server.py
-
-# Linux-клиент (на той же или другой машине):
-python3 stt_client.py
-
-# Явный запуск Plasma/Wayland backend:
-python3 stt_client_wayland.py --keyboard /dev/input/event7 --key-code 100
-
-# Windows-клиент:
-python stt_client_win.py
-
-# Tray-индикатор (XFCE):
-python3 stt_tray.py
+```powershell
+python -m venv .venv-client
+.venv-client\Scripts\python -m pip install -r requirements.txt
+.venv-client\Scripts\python stt_tray.py
 ```
 
-### Настройки tray
-В меню tray есть пункт **Settings...**. Через него можно указать STT backend,
-profile, sample rate и auth-поля для `llm_proxy`.
+Для автозапуска tray на Windows создайте ярлык на `pythonw.exe` из этого окружения
+с полным путём к `stt_tray.py` в аргументах в папке `shell:startup`.
+В `~/.config/voice-input/config.json` задайте `PYTHON` — полный путь к Python
+клиентского окружения, если он отличается от доступного по команде `python`.
 
-Для STT доступны два режима:
+## Меню tray
 
-- **Nemor Link profile** — приложение читает `~/.config/llm.json` и предлагает
-  выбрать один из профилей с `kind: "stt"`. URL, порядок backend-ов,
-  авторизация и TLS fingerprint полностью берутся из выбранного профиля.
-- **Manual configuration** — URL, имя локального профиля, bearer token,
-  host ID и TLS fingerprint задаются непосредственно в настройках voice-input.
+- **Start Client / Stop Client** — включить или выключить голосовой ввод.
+- **Start Client with Tray** — автоматически включать клиент при каждом запуске
+  tray, в том числе после входа в систему. Галочка сохраняется; изначально выключена.
+  Она влияет на следующий запуск tray, текущий клиент управляется первым пунктом.
+- **Settings...** — выбрать сервер, профиль и параметры подключения.
+- **Quit** — остановить клиент и закрыть tray.
 
-Данные обоих режимов сохраняются раздельно, поэтому переключение режима не
-стирает ручные параметры или ранее выбранный профиль Nemor Link.
+Tray управляет клиентом. Сервер запускается отдельно, обычно через `llm-proxy`.
 
-Приложение хранит свои настройки в:
-```text
-~/.config/voice-input/config.json
-```
+В **Settings...** доступны два режима:
 
-Конкретный адрес backend-а, токены и TLS fingerprint не хранятся в репозитории;
-они должны быть заданы в пользовательском config-е.
+- **Nemor Link profile** — выбрать STT-профиль из `~/.config/llm.json`.
+  Адреса, авторизация и TLS fingerprint берутся из профиля.
+- **Manual configuration** — задать URL, имя профиля, bearer token, host ID
+  и TLS fingerprint непосредственно в приложении.
 
+Настройки режимов сохраняются раздельно в `~/.config/voice-input/config.json`.
+Лог клиента: `~/.config/voice-input/client.log`. Адреса и секреты задаются
+в пользовательских конфигурациях.
 
-### Удалённый доступ
-Для удалённого backend-а откройте **Settings...** в tray-меню и задайте URL
-сервера. Значение сохранится в `~/.config/voice-input/config.json`.
+## Длинная диктовка
 
-## Файлы
-
-| Файл | Назначение |
-|------|-----------|
-| `stt_server.py` | HTTP-сервер с Whisper (запускается на машине с GPU) |
-| `stt_client.py` | Linux-клиент: evdev push-to-talk → сервер → xdotool |
-| `stt_client_win.py` | Windows-клиент: push-to-talk → сервер → SendInput |
-| `stt_tray.py` | XFCE tray-индикатор (управляет сервером и клиентом) |
-| `config.py` | Все настройки: устройство, клавиша, модель, сервер |
-| `install.sh` | Установка зависимостей и autostart |
-
-## Настройка (config.py)
-
-```python
-KEYBOARD_DEVICE = "/dev/input/event7"  # evdev устройство клавиатуры
-KEY_CODE = 100                          # 100 = Right Alt
-MODEL_SIZE = "large-v3"                 # tiny/base/small/medium/large-v3
-LANGUAGE = "ru"                         # или "en", или None (авто)
-STT_SERVER = "http://localhost:5055"    # URL сервера (для клиента)
-STT_PORT = 5055                         # порт (для сервера)
-PYTHON = "python3"                      # интерпретатор для tray
-```
-
-### Plasma/Wayland
-
-Wayland backend выбирается автоматически по `XDG_SESSION_TYPE`. Он читает
-PTT-клавишу через evdev, временно копирует распознанный Unicode-текст через
-`wl-copy`, вставляет его независимым от раскладки `Shift+Insert` через
-`ydotool`, а затем восстанавливает прежнее содержимое clipboard. Если
-пользователь успел сам скопировать новое значение, оно не перезаписывается.
-Выбранная клавиатура эксклюзивно захватывается через evdev и клонируется через
-`uinput`: все обычные события проходят в систему, а физическая PTT-клавиша
-подавляется, поэтому приложения не видят её как Alt/AltGr.
-
-Для Ubuntu:
+Silero VAD работает **на клиенте**, на CPU через ONNX Runtime. Модель v6.2
+включена в репозиторий; PyTorch и скачивание модели при запуске не нужны.
+Обновление зависимостей существующего клиента:
 
 ```bash
-sudo apt install wl-clipboard ydotool ydotoold
-sudo usermod -aG input "$USER"
+python -m pip install -r requirements.txt
 ```
 
-После добавления в группу нужен полный выход из сессии и повторный вход.
-Voice-input и `ydotoold` должны иметь доступ к `/dev/uinput`; способ настройки
-зависит от версии пакета. `ydotoold` должен быть запущен. Проверка вставки:
+Используйте Python окружения, указанного в настройке `PYTHON`, затем перезапустите
+клиент через Stop Client / Start Client. Частота записи должна быть **16000 Гц**.
+
+Во время удержания PTT клиент ищет паузу после 15 секунд и отправляет готовый
+фрагмент. Максимальная длина запроса — 24 секунды, даже при речи без пауз.
+При предельной длине используется недавняя короткая пауза, если она есть;
+иначе разрез неизбежно может попасть внутрь слова. Аудио на границах не удаляется
+и не дублируется. После отпускания PTT отправляется остаток; результаты
+собираются по порядку и вставляются **одним текстом**. Пока запрос выполняется,
+запись и локальный анализ продолжаются в отдельных потоках.
+
+Во время записи аудио сохраняется в `~/.config/voice-input/pending/*.f32`.
+После успешного распознавания и вставки файл удаляется. При ошибке аудио
+остаётся, рядом сохраняется частичная расшифровка `.txt`; неполное сообщение
+не вставляется. Подробности и путь сохранённого файла — в `client.log`.
+Формат `.f32`: mono float32 little-endian, 16000 Гц. Например, для прослушивания:
 
 ```bash
-ydotool key SHIFT+INSERT
+ffplay -f f32le -ar 16000 -ac 1 ~/.config/voice-input/pending/FILE.f32
 ```
 
-Путь клавиатуры и код клавиши можно оставить в
-`~/.config/voice-input/config.json` как `KEYBOARD_DEVICE` и `KEY_CODE` либо
-передать аргументами `--keyboard` и `--key-code`. Лучше использовать стабильный
-путь из `/dev/input/by-id/`, а не меняющийся номер `eventN`.
+Автоматического повтора сохранённых записей пока нет. Файлы неудачных записей
+остаются до ручного удаления. При аварийном закрытии сохраняется уже записанная
+на диск часть аудио; завершения очереди запросов при этом не гарантируется.
 
-### Поиск устройства клавиатуры
+## Клавиша и вставка текста
+
+Windows и Wayland используют Right Alt. X11 по умолчанию использует **F13**:
+настройте переназначение Right Alt → F13 средствами рабочего окружения.
+Для ручного запуска X11 можно выбрать другую клавишу через `--key`.
+
+Wayland читает клавиатуру через evdev и подавляет PTT-клавишу через uinput.
+Вставка использует `wl-copy` и `ydotool` (Shift+Insert), затем восстанавливает
+буфер обмена, если пользователь не успел скопировать новое значение.
+Нужны права на клавиатуру и `/dev/uinput`, а также работающий `ydotoold`.
+При нескольких клавиатурах задайте `KEYBOARD_DEVICE` в конфигурации;
+предпочтителен стабильный путь `/dev/input/by-id/`. Код Right Alt: `KEY_CODE: 100`.
+
+## Командная строка
+
+Запускать из корня репозитория:
+
 ```bash
-python3 -c "
-import evdev
-for path in evdev.list_devices():
-    dev = evdev.InputDevice(path)
-    print(f'{dev.path}: {dev.name}')
-"
+python -m voice_input tray
+python -m voice_input client
+python -m voice_input client --platform x11 --key Alt_R
+python -m voice_input client --platform wayland --keyboard /dev/input/by-id/DEVICE --key-code 100
+python -m voice_input client --help
 ```
+
+## Структура
+
+| Путь | Назначение |
+|---|---|
+| `stt_tray.py` | Основная точка входа в desktop-приложение |
+| `voice_input/` | Tray, настройки, клиент и платформенные backend-ы |
+| `servers/` | GigaAM и Whisper (CUDA/ROCm), серверная конфигурация и зависимости |
+| `scripts/server/` | Установка, запуск и systemd для Whisper |
+| `systemd/` | Пользовательская служба ydotoold |
+| `tests/` | Автоматические проверки клиента |
+| `docs/` | Документация; старый проектный документ отмечен как исторический |
+
+Серверы и развёртывание описаны в [servers/README.md](servers/README.md).
+Корневые `stt_server*.py` оставлены как совместимые точки входа для существующих
+команд `llm-proxy`. Эксперименты streaming/Omni, тестовый Windows hook и старые
+`stt_client*.py` удалены; для клиента используется `python -m voice_input client`.
+Удалённые эксперименты доступны в истории Git.
+
+## Проверка
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Для тестов нужны клиентские зависимости из `requirements.txt`.

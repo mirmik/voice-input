@@ -6,3 +6,4 @@ pystray
 pillow
 python-xlib; platform_system == "Linux"
 evdev; platform_system == "Linux"
+onnxruntime>=1.16.1,<2

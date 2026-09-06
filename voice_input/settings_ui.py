@@ -222,8 +222,8 @@ def _show_settings_window(on_saved=None, client_running=None):
             sample_rate = int(sample_rate_var.get().strip())
         except ValueError as exc:
             raise ValueError("Sample rate must be an integer.") from exc
-        if sample_rate <= 0:
-            raise ValueError("Sample rate must be greater than zero.")
+        if sample_rate != 16000:
+            raise ValueError("Client Silero segmentation requires sample rate 16000.")
 
         raw_health = health_var.get().strip()
         health_timeout = None

@@ -1,5 +1,9 @@
 __pycache__/
-.venv-gigaam/
+*.py[cod]
+.venv*/
+.gigaam-runtime/
+.pytest_cache/
+.ruff_cache/
 
 .codex
 .config/

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 VOICE_CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/voice-input"
 UNIT_NAME="stt-server.service"
@@ -37,7 +38,7 @@ After=default.target
 
 [Service]
 Type=simple
-WorkingDirectory=$SCRIPT_DIR
+WorkingDirectory=$REPO_DIR
 ExecStart=$LAUNCHER_PATH
 Restart=on-failure
 RestartSec=3

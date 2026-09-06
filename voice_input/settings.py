@@ -24,6 +24,7 @@ def default_tool_config():
         "PYTHON": "python" if os.name == "nt" else "python3",
         "sample_rate": DEFAULT_SAMPLE_RATE,
         "monitor": False,
+        "start_client_with_tray": False,
         "health_timeout": 0.6,
         "platform": None,
         "stt": {

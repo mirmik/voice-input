@@ -10,10 +10,22 @@ from voice_input.settings import (
     client_log_path,
     configured_python,
     ensure_runtime_configs,
+    load_tool_config,
+    save_tool_config,
 )
 
 
 SCRIPT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def client_autostart_enabled():
+    return bool(load_tool_config().get("start_client_with_tray", False))
+
+
+def set_client_autostart(enabled):
+    cfg = load_tool_config()
+    cfg["start_client_with_tray"] = bool(enabled)
+    save_tool_config(cfg)
 
 
 def client_command(args):
@@ -134,13 +146,30 @@ def _run_windows(args):
             toggle = pystray.MenuItem("Start Client", start_client)
         return pystray.Menu(
             toggle,
+            pystray.MenuItem(
+                "Start Client with Tray",
+                toggle_autostart,
+                checked=lambda _item: client_autostart_enabled(),
+            ),
             pystray.MenuItem("Settings...", open_settings),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", quit_tray),
         )
 
+    def toggle_autostart(icon, _item):
+        try:
+            set_client_autostart(not client_autostart_enabled())
+        except OSError as exc:
+            icon.notify(str(exc), "Cannot save autostart setting")
+        icon.update_menu()
+
+    def setup(icon):
+        icon.visible = True
+        if client_autostart_enabled():
+            start_client()
+
     state["icon"] = pystray.Icon("voice-input", make_icon(False), "STT Inactive", menu())
-    state["icon"].run()
+    state["icon"].run(setup=setup)
     return 0
 
 
@@ -188,6 +217,8 @@ def _run_linux(args):
         return client_proc["proc"] is not None
 
     def start_client():
+        if client_proc["proc"] is not None:
+            return False
         env = {**os.environ, "PYTHONUNBUFFERED": "1"}
         client_log["file"] = open(client_log_path(), "a", encoding="utf-8")
         client_proc["proc"] = subprocess.Popen(
@@ -201,6 +232,7 @@ def _run_linux(args):
         indicator.set_icon_full(icon_on, "STT Active")
         toggle_item.set_label("Stop Client")
         GLib.timeout_add(1000, check_processes)
+        return False
 
     def on_toggle(_):
         if client_proc["proc"] is None:
@@ -231,6 +263,27 @@ def _run_linux(args):
 
     toggle_item.connect("activate", on_toggle)
     menu.append(toggle_item)
+    autostart_item = Gtk.CheckMenuItem(label="Start Client with Tray")
+    autostart_item.set_active(client_autostart_enabled())
+
+    def on_autostart(item):
+        try:
+            set_client_autostart(item.get_active())
+        except OSError as exc:
+            item.handler_block(autostart_handler)
+            item.set_active(client_autostart_enabled())
+            item.handler_unblock(autostart_handler)
+            dialog = Gtk.MessageDialog(
+                message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.CLOSE,
+                text="Cannot save autostart setting",
+            )
+            dialog.format_secondary_text(str(exc))
+            dialog.run()
+            dialog.destroy()
+
+    autostart_handler = autostart_item.connect("toggled", on_autostart)
+    menu.append(autostart_item)
     settings_item = Gtk.MenuItem(label="Settings...")
     settings_item.connect("activate", on_settings)
     menu.append(settings_item)
@@ -242,5 +295,7 @@ def _run_linux(args):
     indicator.set_menu(menu)
 
     signal.signal(signal.SIGINT, signal.SIG_DFL)
+    if client_autostart_enabled():
+        GLib.idle_add(start_client)
     Gtk.main()
     return 0

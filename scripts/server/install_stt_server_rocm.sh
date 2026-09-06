@@ -28,8 +28,8 @@ echo "Installation complete."
 echo
 echo "Start server with:"
 echo "  source \"$VENV_DIR/bin/activate\""
-echo "  cd \"$(cd "$(dirname "$0")" && pwd)\""
-echo "  python stt_server_rocm.py"
+echo "  cd \"$(cd "$(dirname "$0")/../.." && pwd)\""
+echo "  python -m servers.stt_server_rocm"
 echo
 echo "Optional model override:"
-echo "  STT_MODEL_ID=openai/whisper-large-v3 python stt_server_rocm.py"
+echo "  STT_MODEL_ID=openai/whisper-large-v3 python -m servers.stt_server_rocm"
