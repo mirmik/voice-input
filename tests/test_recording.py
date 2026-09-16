@@ -120,6 +120,67 @@ class RecordingTests(unittest.TestCase):
         self.recorder.wait()
         self.assertFalse(self.recorder.active)
 
+    def test_hooks_surround_capture_and_release_before_transcription_finishes(self):
+        order = []
+        hooks = Mock()
+        hooks.start.side_effect = lambda session: order.append(('hook-start', session))
+        hooks.stop.side_effect = lambda reason: order.append(('hook-stop', reason))
+        self.recorder.hooks = hooks
+        stream = self.stream_patch.target.InputStream.return_value
+        stream.start.side_effect = lambda: order.append(('stream-start', None))
+        stream.close.side_effect = lambda: order.append(('stream-close', None))
+        entered, release = threading.Event(), threading.Event()
+        def transcribe(audio):
+            entered.set()
+            release.wait(3)
+            return {'text': 'текст'}
+        self.stt.transcribe.side_effect = transcribe
+        try:
+            self.recorder.start()
+            self.recorder.start()
+            self.feed(1)
+            self.recorder.stop_async()
+            self.assertTrue(entered.wait(2))
+            self.assertEqual([row[0] for row in order],
+                             ['hook-start', 'stream-start', 'stream-close', 'hook-stop'])
+            self.assertEqual(order[-1][1], 'released')
+            self.assertEqual(len(order[0][1]), 32)
+            self.recorder.stop_async()
+            hooks.stop.assert_called_once()
+        finally:
+            release.set()
+
+    def test_start_failure_and_close_release_hooks(self):
+        hooks = Mock()
+        self.recorder.hooks = hooks
+        with patch('voice_input.recording.sd.InputStream', side_effect=RuntimeError('no device')):
+            with self.assertRaises(RuntimeError):
+                self.recorder.start()
+        hooks.stop.assert_called_once_with('start_failed')
+        self.recorder.start()
+        self.recorder.close()
+        self.assertEqual(hooks.stop.call_args, call('closed'))
+        hooks.close.assert_called_once()
+
+    def test_stream_close_error_still_releases_hooks_and_recorder(self):
+        hooks = Mock()
+        self.recorder.hooks = hooks
+        self.recorder.start()
+        self.recorder.stream.close.side_effect = RuntimeError('device lost')
+        with self.assertRaises(RuntimeError):
+            self.recorder.stop_async()
+        self.assertFalse(self.recorder.active)
+        hooks.stop.assert_called_once_with('released')
+
+    def test_interrupted_start_releases_hooks(self):
+        hooks = Mock()
+        self.recorder.hooks = hooks
+        with patch('voice_input.recording.sd.InputStream', side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                self.recorder.start()
+        hooks.stop.assert_called_once_with('start_failed')
+        self.assertFalse(self.recorder.active)
+
     def test_configured_lower_threshold_sends_at_early_pause(self):
         self.recorder.close()
         self.recorder = Recorder(self.stt, 16000, self.insert, vad=FakeVAD(),

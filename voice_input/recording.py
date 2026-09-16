@@ -10,18 +10,20 @@ import numpy as np
 import sounddevice as sd
 
 from voice_input import settings
+from voice_input.hooks import RecordingHooks
 from voice_input.vad import SAMPLE_RATE, Segmenter, SileroVAD
 
 
 class Recorder:
     def __init__(self, stt_client, sample_rate, type_text, vad=None, recovery_dir=None,
-                 target_seconds=settings.DEFAULT_VAD_TARGET_SECONDS):
+                 target_seconds=settings.DEFAULT_VAD_TARGET_SECONDS, hooks=None):
         if sample_rate != SAMPLE_RATE:
             raise ValueError('Client Silero segmentation requires sample_rate=16000')
         self.target_seconds = settings.validate_vad_target_seconds(target_seconds)
         self.stt = stt_client
         self.sample_rate = sample_rate
         self.type_text = type_text
+        self.hooks = hooks if hooks is not None else RecordingHooks()
         self.vad = vad if vad is not None else SileroVAD()
         self.recovery_dir = Path(recovery_dir or Path(settings.CONFIG_DIR) / 'pending')
         self.recovery_dir.mkdir(parents=True, exist_ok=True)
@@ -49,16 +51,20 @@ class Recorder:
             session['file'] = session['path'].open('xb')
             self.audio_queue.put(('start', session))
             try:
+                self.hooks.start(session['path'].stem)
                 self.stream = sd.InputStream(
                     samplerate=self.sample_rate, channels=1, dtype='float32',
                     callback=self._callback,
                 )
                 self.stream.start()
-            except Exception:
-                if self.stream is not None:
-                    self.stream.close()
-                self.stream = None
-                self.audio_queue.put(('end', None))
+            except BaseException:
+                try:
+                    if self.stream is not None:
+                        self.stream.close()
+                finally:
+                    self.stream = None
+                    self.audio_queue.put(('end', None))
+                    self.hooks.stop('start_failed')
                 raise
             self.active = True
             print('  Recording (local Silero VAD)...', flush=True)
@@ -67,7 +73,7 @@ class Recorder:
         # Inference, network and disk I/O must never run in PortAudio's callback.
         self.audio_queue.put(('audio', (indata.copy().reshape(-1), str(status) if status else None)))
 
-    def stop_async(self):
+    def stop_async(self, reason='released'):
         # Stop capture before a subsequent key-down can start the next session.
         # Transcription and text insertion continue on the background worker.
         with self.lock:
@@ -76,10 +82,13 @@ class Recorder:
             try:
                 self.stream.stop()
             finally:
-                self.stream.close()
-                self.stream = None
-                self.active = False
-                self.audio_queue.put(('end', None))
+                try:
+                    self.stream.close()
+                finally:
+                    self.stream = None
+                    self.active = False
+                    self.audio_queue.put(('end', None))
+                    self.hooks.stop(reason)
         print('  Recording stopped; finishing transcription.', flush=True)
 
     def stop_and_send(self):
@@ -91,11 +100,16 @@ class Recorder:
         self.send_queue.join()
 
     def close(self):
-        self.stop_async()
-        self.closed = True
-        self.audio_queue.put(('quit', None))
-        for worker in self.workers:
-            worker.join()
+        if self.closed:
+            return
+        try:
+            self.stop_async(reason='closed')
+        finally:
+            self.closed = True
+            self.hooks.close()
+            self.audio_queue.put(('quit', None))
+            for worker in self.workers:
+                worker.join()
 
     def _segment_loop(self):
         session = None

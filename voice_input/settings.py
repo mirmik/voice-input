@@ -30,6 +30,7 @@ def default_tool_config():
         "start_client_with_tray": False,
         "health_timeout": 0.6,
         "platform": None,
+        "hooks": {},
         "stt": {
             "mode": STT_MODE_MANUAL,
             "nemor_link": {

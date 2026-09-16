@@ -8,6 +8,20 @@ from voice_input import settings
 
 
 class SettingsTests(unittest.TestCase):
+    def test_external_hooks_survive_settings_round_trip(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            settings, 'CONFIG_DIR', directory
+        ), patch.object(settings, 'TOOL_CONFIG_PATH', str(Path(directory) / 'config.json')):
+            cfg = settings.load_tool_config()
+            self.assertEqual(cfg['hooks'], {})
+            cfg['hooks'] = {'recording_start': ['/external/handler', 'start'],
+                            'timeout_seconds': .3}
+            settings.save_tool_config(cfg)
+            changed = settings.load_tool_config()
+            changed['vad_target_seconds'] = 5
+            settings.save_tool_config(changed)
+            self.assertEqual(settings.load_tool_config()['hooks'], cfg['hooks'])
+
     def test_vad_target_validation_and_persistence(self):
         for value in (0, -1, 24, 25, "nan", "inf", None, True, "bad"):
             with self.subTest(value=value), self.assertRaises(ValueError):

@@ -7,6 +7,7 @@ import nemor_link as nl
 
 from voice_input.platforms import load_platform
 from voice_input.recording import Recorder
+from voice_input.hooks import RecordingHooks
 from voice_input.settings import (
     DEFAULT_VAD_TARGET_SECONDS,
     build_nemor_config,
@@ -63,6 +64,11 @@ def run(args):
         else defaults["health_timeout"]
     )
     platform = load_platform(args.platform or defaults["platform"])
+    try:
+        hooks = RecordingHooks(tool_cfg.get('hooks'))
+    except ValueError as exc:
+        print(f'Config error: {exc}', file=sys.stderr)
+        return 2
 
     try:
         stt = build_stt(
@@ -89,6 +95,7 @@ def run(args):
         recorder = Recorder(
             stt, sample_rate, platform.type_text,
             target_seconds=tool_cfg.get("vad_target_seconds", DEFAULT_VAD_TARGET_SECONDS),
+            hooks=hooks,
         )
         try:
             platform.run_hotkey_loop(recorder, args)
