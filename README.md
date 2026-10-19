@@ -14,6 +14,10 @@ Linux (Debian/Ubuntu):
 .venv-client/bin/python stt_tray.py
 ```
 
+Запуск клиента без tray: `.venv-client/bin/python stt_client.py`.
+Остановить его можно через Ctrl+C. Аргументы клиента передаются скрипту напрямую,
+например: `.venv-client/bin/python stt_client.py --platform x11 --key Alt_R`.
+
 Установщик создаёт клиентское окружение `.venv-client`, устанавливает системные
 зависимости и добавляет tray в автозапуск при входе в графическую сессию.
 После добавления пользователя в группу `input` нужно выйти из сессии и войти снова.
@@ -25,6 +29,8 @@ python -m venv .venv-client
 .venv-client\Scripts\python -m pip install -r requirements.txt
 .venv-client\Scripts\python stt_tray.py
 ```
+
+Запуск клиента без tray: `.venv-client\Scripts\python stt_client.py`.
 
 Для автозапуска tray на Windows создайте ярлык на `pythonw.exe` из этого окружения
 с полным путём к `stt_tray.py` в аргументах в папке `shell:startup`.
@@ -186,6 +192,7 @@ python -m voice_input client --help
 | Путь | Назначение |
 |---|---|
 | `stt_tray.py` | Основная точка входа в desktop-приложение |
+| `stt_client.py` | Запуск клиента без tray |
 | `voice_input/` | Tray, настройки, клиент и платформенные backend-ы |
 | `servers/` | GigaAM и Whisper (CUDA/ROCm), серверная конфигурация и зависимости |
 | `scripts/server/` | Установка, запуск и systemd для Whisper |
