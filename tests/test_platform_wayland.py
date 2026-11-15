@@ -1,4 +1,6 @@
 import subprocess
+import sys
+import time
 import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
@@ -8,6 +10,38 @@ from voice_input import platform_wayland
 
 
 class WaylandTextInsertionTests(unittest.TestCase):
+    @patch("voice_input.platform_wayland.CLIPBOARD_TIMEOUT", 0.15)
+    def test_clipboard_timeout_kills_child_holding_output_pipe(self):
+        command = [sys.executable, "-c", (
+            "import os, time; "
+            "os.fork(); "
+            "time.sleep(30)"
+        )]
+        started = time.monotonic()
+
+        with self.assertRaisesRegex(RuntimeError, "timed out"):
+            platform_wayland._run_clipboard_command(command)
+
+        self.assertLess(time.monotonic() - started, 2)
+
+    @patch("voice_input.platform_wayland._run_clipboard_command")
+    def test_clipboard_read_timeout_prevents_paste_and_allows_retry(self, run):
+        run.side_effect = RuntimeError("wl-paste timed out")
+        with patch("voice_input.platform_wayland._require_command"), \
+                patch("voice_input.platform_wayland._set_clipboard_text") as copy:
+            with self.assertRaisesRegex(RuntimeError, "timed out"):
+                platform_wayland.type_text("retained dictation")
+            copy.assert_not_called()
+
+        run.side_effect = [
+            subprocess.CompletedProcess([], 0, b"text/plain\n"),
+            subprocess.CompletedProcess([], 0, b"new clipboard"),
+        ]
+        self.assertEqual(
+            platform_wayland._snapshot_clipboard(),
+            ("text/plain", b"new clipboard"),
+        )
+
     @patch("voice_input.platform_wayland.shutil.which", return_value="/usr/bin/tool")
     @patch("voice_input.platform_wayland.time.sleep")
     @patch("voice_input.platform_wayland._restore_clipboard_if_unchanged")

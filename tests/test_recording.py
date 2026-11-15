@@ -84,6 +84,20 @@ class RecordingTests(unittest.TestCase):
         self.assertEqual(transcript.read_text(), 'слово')
         self.assertEqual(len(list(Path(self.directory.name).glob('*.f32'))), 1)
 
+    def test_clipboard_timeout_does_not_block_next_dictation(self):
+        self.insert.side_effect = [RuntimeError('wl-paste timed out'), None]
+        self.recorder.start()
+        self.feed(1)
+        self.recorder.stop_and_send()
+        self.recorder.start()
+        self.feed(1)
+        self.recorder.stop_and_send()
+
+        self.assertEqual(self.insert.call_args_list, [call('слово'), call('слово')])
+        self.assertEqual(len(list(Path(self.directory.name).glob('*.f32'))), 1)
+        transcript = next(Path(self.directory.name).glob('*.txt'))
+        self.assertEqual(transcript.read_text(), 'слово')
+
     def test_empty_segment_does_not_add_leading_space(self):
         self.stt.transcribe.side_effect = [{'text': ''}, {'text': 'конец'}]
         self.recorder.start()

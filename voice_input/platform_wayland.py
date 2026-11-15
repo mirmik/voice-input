@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import signal
 import subprocess
 import time
 
@@ -14,7 +15,38 @@ from voice_input.settings import load_tool_config
 DEFAULT_KEY_CODE = ecodes.KEY_RIGHTALT
 PASTE_KEYS = ("SHIFT+INSERT",)
 CLIPBOARD_RESTORE_DELAY = 0.35
+CLIPBOARD_TIMEOUT = 2.0
 TEXT_MIME_TYPES = ("text/plain;charset=utf-8", "text/plain", "UTF8_STRING")
+
+
+def _run_clipboard_command(command, input=None, text=False, check=False,
+                           capture_output=True):
+    # wl-paste may spawn cat, which inherits its output pipe. Killing only
+    # wl-paste on timeout leaves communicate() waiting for that child forever.
+    with subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE if capture_output else subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=text,
+        start_new_session=True,
+    ) as process:
+        try:
+            stdout, _ = process.communicate(input, timeout=CLIPBOARD_TIMEOUT)
+        except subprocess.TimeoutExpired as exc:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
+            raise RuntimeError(
+                f"{command[0]} timed out accessing the Wayland clipboard. "
+                "Copy fresh text before retrying; dictation audio is retained."
+            ) from exc
+        result = subprocess.CompletedProcess(command, process.returncode, stdout)
+        if check:
+            result.check_returncode()
+        return result
 
 
 def _require_command(name, package):
@@ -26,20 +58,19 @@ def _require_command(name, package):
 
 
 def _set_clipboard_text(text):
-    subprocess.run(
+    _run_clipboard_command(
         ["wl-copy", "--type", "text/plain;charset=utf-8"],
         input=text,
         text=True,
         check=True,
+        capture_output=False,
     )
 
 
 def _snapshot_clipboard():
     """Capture one representative MIME payload, including images and text."""
-    types_result = subprocess.run(
+    types_result = _run_clipboard_command(
         ["wl-paste", "--list-types"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
         check=False,
     )
     if types_result.returncode != 0:
@@ -51,10 +82,8 @@ def _snapshot_clipboard():
         (mime for mime in TEXT_MIME_TYPES if mime in offered),
         offered[0],
     )
-    payload_result = subprocess.run(
+    payload_result = _run_clipboard_command(
         ["wl-paste", "--no-newline", "--type", mime_type],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
         check=False,
     )
     if payload_result.returncode != 0:
@@ -63,10 +92,8 @@ def _snapshot_clipboard():
 
 
 def _clipboard_contains_text(text):
-    result = subprocess.run(
+    result = _run_clipboard_command(
         ["wl-paste", "--no-newline", "--type", "text/plain;charset=utf-8"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
         check=False,
     )
     return result.returncode == 0 and result.stdout == text.encode("utf-8")
@@ -74,13 +101,14 @@ def _clipboard_contains_text(text):
 
 def _restore_clipboard(snapshot):
     if snapshot is None:
-        subprocess.run(["wl-copy", "--clear"], check=True)
+        _run_clipboard_command(["wl-copy", "--clear"], check=True, capture_output=False)
         return
     mime_type, payload = snapshot
-    subprocess.run(
+    _run_clipboard_command(
         ["wl-copy", "--type", mime_type],
         input=payload,
         check=True,
+        capture_output=False,
     )
 
 
